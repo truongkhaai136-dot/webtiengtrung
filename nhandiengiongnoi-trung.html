@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8"/>
     <title>Combined Chinese Q&A Recorder & Text Reader</title>
+    <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script>
     <style>
         /* --- General Layout --- */
         html, body {
@@ -139,6 +140,76 @@
         .reading-highlight {
             background-color: rgb(173, 216, 230); /* Màu xanh nhạt */
         }
+
+        /* --- CSS CHO TÍNH NĂNG STROKE ORDER --- */
+        #stroke-order-modal {
+            display: none; /* Ẩn theo mặc định */
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            justify-content: center;
+            align-items: center;
+        }
+        #stroke-order-content {
+            background-color: #fff;
+            padding: 20px 40px 40px 40px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        #stroke-order-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: flex-start; /* Căn lề trên để các khối thẳng hàng */
+            gap: 25px; /* Khoảng cách giữa các ô */
+            margin-bottom: 20px;
+        }
+        
+        /* CSS MỚI CHO KHỐI LUYỆN VIẾT */
+        .char-practice-block {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .char-writer-box {
+            width: 150px;
+            height: 150px;
+            cursor: crosshair;
+            border: 1px solid #eee;
+            margin-bottom: 10px; /* Tạo khoảng cách với thông tin bộ thủ */
+        }
+        .radical-info {
+            font-size: 13px;
+            color: #333;
+            background-color: #f0f0f0;
+            padding: 8px;
+            border-radius: 5px;
+            width: 150px; /* Đồng bộ chiều rộng với ô viết */
+            box-sizing: border-box;
+            text-align: left;
+            line-height: 1.5;
+        }
+        
+        #stroke-order-buttons button {
+            margin: 0 10px;
+            padding: 10px 20px;
+        }
+        #stroke-order-close-btn {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+        }
+        #stroke-order-close-btn:hover {
+            background-color: #5a6268;
+        }
     </style>
 </head>
 <body>
@@ -175,8 +246,22 @@
         </div>
     </div>
 </div>
+
+<div id="stroke-order-modal">
+    <div id="stroke-order-content">
+        <h3 id="stroke-order-title">Luyện viết chữ Hán</h3>
+        <div id="stroke-order-container"></div>
+        <div id="stroke-order-buttons">
+             <button id="stroke-order-animate-all-btn">Xem lại tất cả</button>
+             <button id="stroke-order-close-btn">Đóng</button>
+        </div>
+    </div>
+</div>
+
 <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
+
+<script src="radical_data.js"></script>
 
 <script>
     // =================================================================
@@ -195,8 +280,6 @@
     let currentPlaybackRate = 1.0;
     let isReading = false;
     let currentUtterance = null;
-    // Đã xóa biến 'originalTextAreaContent' không cần thiết
-
     const highlightColors = ["#ffff99", "#99ccff", "#ffcc99", "#ffcccb", "#ffb6c1", "#98fb98", "#dda0dd", "#c19a6b"];
     let currentColorIndex = 0;
 
@@ -290,8 +373,7 @@
         if (isReading) {
             speechSynthesis.cancel();
         }
-        removeHighlight(); // Gọi hàm removeHighlight đã được sửa lỗi
-        // Đã xóa dòng gán 'originalTextAreaContent'
+        removeHighlight();
         const cleanedText = text.replace(/[\u2500-\u25FF\u2B00-\u2BFF]/g, '')
                                 .replace(/Kiểm tra/g, '')
                                 .replace(/Gõ lại câu này/g, '')
@@ -319,7 +401,6 @@
             isReading = false;
             removeHighlight();
             currentUtterance = null;
-             // Đã xóa dòng reset 'originalTextAreaContent'
         };
         speechSynthesis.speak(currentUtterance);
     }
@@ -609,38 +690,28 @@
         return textContent;
     }
 
-    // ========== HÀM ĐÃ SỬA LỖI (BƯỚC 2) ==========
     function removeHighlight() {
         const textArea = document.getElementById('text-area');
-        // Luôn tìm tất cả các span highlight hiện có
         const highlightedSpans = textArea.querySelectorAll('.reading-highlight');
-        
-        // Thay thế mỗi span bằng chính nội dung text của nó (gỡ bỏ tag span)
         highlightedSpans.forEach(span => {
             span.parentNode.replaceChild(document.createTextNode(span.textContent), span);
         });
-
-        // Gộp các nút văn bản liền kề lại để DOM sạch sẽ
         textArea.normalize();
     }
 
 
     function applyHighlight(wordText, charIndexInCleanedText) {
         removeHighlight();
-
         const textArea = document.getElementById('text-area');
         const fullCleanedText = getTextContentOfTextArea(textArea);
-
         const startIndex = charIndexInCleanedText;
         const endIndex = charIndexInCleanedText + wordText.length;
-
         const range = document.createRange();
         let currentOffset = 0;
         let startNode = null;
         let endNode = null;
         let startNodeOffset = 0;
         let endNodeOffset = 0;
-
         const walker = document.createTreeWalker(textArea, NodeFilter.SHOW_TEXT, textNodeFilter, false);
         let node;
         while ((node = walker.nextNode())) {
@@ -656,7 +727,6 @@
             }
             currentOffset += nodeValue.length;
         }
-
         if (startNode && endNode) {
             try {
                 range.setStart(startNode, startNodeOffset);
@@ -671,17 +741,12 @@
         }
     }
 
-    // --- Các EventListener cho nút đọc ---
-
-    // ========== HÀM ĐÃ SỬA LỖI (BƯỚC 1) ==========
     document.getElementById("text-area").addEventListener("mouseup", function () {
         setTimeout(() => {
             const selection = window.getSelection();
-            // Chỉ thực hiện khi người dùng bôi đen văn bản (selection không phải là một điểm)
             if (selection.isCollapsed) {
-                return; // Nếu là click chuột đơn thuần, không làm gì cả.
+                return;
             }
-
             let selectedText = selection.toString().trim();
             if (selectedText) {
                 selectedText = selectedText.replace(/Kiểm tra/g, '').replace(/Gõ lại câu này/g, '').replace(/Xóa\/Làm lại/g, '').trim();
@@ -703,24 +768,18 @@
     document.getElementById("read-current-sentence").addEventListener("click", function() {
         const textArea = document.getElementById('text-area');
         const selection = window.getSelection();
-
         if (selection.rangeCount === 0) {
             alert("Vui lòng đặt con trỏ chuột vào vị trí muốn đọc hoặc chọn một đoạn văn bản.");
             return;
         }
-
         const range = selection.getRangeAt(0);
-
         const preCursorRange = document.createRange();
         preCursorRange.selectNodeContents(textArea);
         preCursorRange.setEnd(range.startContainer, range.startOffset);
-
         const tempDiv = document.createElement('div');
         tempDiv.appendChild(preCursorRange.cloneContents());
-
         const offsetInFilteredText = getTextContentOfTextArea(tempDiv).length;
         const fullTextNodes = getTextContentOfTextArea(textArea);
-
         let sentenceStart = offsetInFilteredText;
         while (sentenceStart > 0) {
             const char = fullTextNodes[sentenceStart - 1];
@@ -732,7 +791,6 @@
         while (sentenceStart < fullTextNodes.length && (fullTextNodes[sentenceStart] === ' ' || fullTextNodes[sentenceStart] === '\n' || fullTextNodes[sentenceStart].match(/[.,?!]/))) {
             sentenceStart++;
         }
-
         let sentenceEnd = offsetInFilteredText;
         while (sentenceEnd < fullTextNodes.length) {
             const char = fullTextNodes[sentenceEnd];
@@ -742,9 +800,7 @@
             }
             sentenceEnd++;
         }
-
         let sentenceToRead = fullTextNodes.substring(sentenceStart, sentenceEnd).trim();
-
         if (sentenceToRead) {
             speak(sentenceToRead, sentenceStart);
         } else {
@@ -775,8 +831,94 @@
     });
 
     // =================================================================
-    // =========== KEYBOARD SHORTCUTS & POPUPS ARE REMOVED ===========
+    // =========== LOGIC MỚI CHO TÍNH NĂNG STROKE ORDER QUIZ ============
     // =================================================================
+    
+    const strokeOrderModal = document.getElementById('stroke-order-modal');
+    const strokeOrderContainer = document.getElementById('stroke-order-container');
+    const strokeOrderCloseBtn = document.getElementById('stroke-order-close-btn');
+    const strokeOrderAnimateAllBtn = document.getElementById('stroke-order-animate-all-btn');
+    let hanziWriters = [];
+
+    // THAY ĐỔI: Cập nhật hàm startMultiPractice để hiển thị bộ thủ
+    function startMultiPractice(text) {
+        const characters = text.split('').filter(char => /[\u4e00-\u9fa5]/.test(char));
+        if (characters.length === 0) {
+            return;
+        }
+        strokeOrderContainer.innerHTML = '';
+        hanziWriters = [];
+        strokeOrderModal.style.display = 'flex';
+
+        characters.forEach((character, index) => {
+            // Tạo một khối chứa cho cả ô viết và thông tin bộ thủ
+            const charBlock = document.createElement('div');
+            charBlock.className = 'char-practice-block';
+
+            // Tạo div riêng cho ô viết HanziWriter
+            const writerDiv = document.createElement('div');
+            writerDiv.id = `char-target-${index}`;
+            writerDiv.className = 'char-writer-box';
+            charBlock.appendChild(writerDiv);
+
+            // Kiểm tra và hiển thị thông tin bộ thủ từ localRadicalData
+            // Đảm bảo rằng file radical_data.js đã được tải
+            if (typeof localRadicalData !== 'undefined' && localRadicalData[character]) {
+                const radicals = localRadicalData[character];
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'radical-info';
+                infoDiv.innerHTML = radicals.map(rad => `<b>${rad.r}</b> (${rad.n}): ${rad.m}`).join('<br>');
+                charBlock.appendChild(infoDiv);
+            }
+            
+            strokeOrderContainer.appendChild(charBlock);
+
+            // Tạo HanziWriter cho chữ này
+            const writer = HanziWriter.create(writerDiv.id, character, {
+                width: 150,
+                height: 150,
+                padding: 5,
+                showOutline: true,
+                showCharacter: false,
+                strokeAnimationSpeed: 1,
+                delayBetweenStrokes: 200,
+                quizMistakeAnimationSpeed: 0.8,
+            });
+            hanziWriters.push(writer);
+        });
+        hanziWriters.forEach(writer => writer.quiz());
+    }
+
+    function hidePractice() {
+        strokeOrderModal.style.display = 'none';
+        strokeOrderContainer.innerHTML = '';
+        hanziWriters = [];
+    }
+    
+    strokeOrderCloseBtn.addEventListener('click', hidePractice);
+    strokeOrderAnimateAllBtn.addEventListener('click', () => {
+        hanziWriters.forEach(writer => writer.animateCharacter());
+    });
+
+    // THAY ĐỔI: Cập nhật sự kiện nhấn phím
+    document.addEventListener('keydown', function(event) {
+        // Kích hoạt bằng Alt + P
+        if (event.altKey && (event.key === 'P' || event.key === 'p')) {
+            if (strokeOrderModal.style.display !== 'flex') {
+                const selection = window.getSelection();
+                const selectedText = selection.toString().trim();
+                if (selectedText) {
+                    event.preventDefault(); // Ngăn hành động mặc định của trình duyệt với Alt+P
+                    startMultiPractice(selectedText);
+                }
+            }
+        }
+        
+        // Đóng popup bằng phím Esc
+        if (event.key === 'Escape' && strokeOrderModal.style.display === 'flex') {
+            hidePractice();
+        }
+    });
 
     // =================================================================
     // =================== INITIALIZATION ==============================
