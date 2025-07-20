@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="utf-8"/>
+    <title>Dual Transcript Interface (Press Space to Replay)</title>
+    <script src="https://cdn.jsdelivr.net/npm/hanzi-writer/dist/hanzi-writer.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+        .container { display: flex; height: 100vh; }
+        .pane { flex: 1; padding: 15px; border-left: 2px solid #ddd; overflow-y: auto; }
+        .pane:first-child { border-left: none; }
+        #player { margin-bottom: 15px; }
+        #transcript { max-width: 100%; margin: 0 auto; }
+        .line { padding: 8px; border-bottom: 1px solid #ccc; cursor: pointer; position: relative; outline: none; }
+        .line:hover { background-color: #eef; }
+        .line:focus { box-shadow: 0 0 0 2px #2196f3; }
+        .user { font-weight: bold; }
+        .machine { color: gray; margin-left: 10px; }
+        .line[contenteditable="true"] { background-color: #ffffcc; outline: 1px dashed #999; }
+        .highlight { background-color: #d1ecf1 !important; }
+        .record-btn {
+            position: absolute; right: 10px; top: 8px; background: #2196f3; color: white;
+            border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;
+        }
+        .result { margin-top: 5px; font-size: 13px; }
+        #toolbar {
+            display: none; position: absolute; background: #fff; border: 1px solid #ccc;
+            padding: 5px; z-index: 1000;
+        }
+        #globalTogglePause {
+            position: fixed; bottom: 20px; right: 20px; z-index: 1000; padding: 10px 20px;
+            background-color: #f44336; color: white; border: none; border-radius: 8px;
+            cursor: pointer; font-size: 16px; font-weight: bold;
+        }
+        h3 { border-bottom: 1px solid #aaa; padding-bottom: 10px; }
+
+        /* --- CSS CHO HANZI WRITER POPUP --- */
+        #hanzi-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6); z-index: 1999; display: none;
+        }
+        #hanzi-popup {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: white; padding: 25px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            z-index: 2000; display: none; text-align: center; max-height: 80vh; overflow-y: auto;
+        }
+        .hanzi-char-target {
+            display: inline-block; margin: 10px;
+        }
+        #hanzi-popup-controls {
+            margin-top: 20px;
+        }
+        #hanzi-popup-controls button {
+            padding: 8px 16px; font-size: 16px; cursor: pointer; margin: 0 10px;
+        }
+        /* --- KẾT THÚC CSS CHO HANZI WRITER POPUP --- */
+    </style>
+</head>
+<body>
+
+<div id="toolbar">
+    <button onclick="execCmd('bold')"><b>B</b></button>
+    <button onclick="execCmd('italic')"><i>I</i></button>
+    <button onclick="execCmd('underline')"><u>U</u></button>
+    <input onchange="execCmd('foreColor', this.value)" type="color"/>
+</div>
+
+<div class="container">
+    <div class="pane" id="pane1">
+        <h2>Pane 1</h2>
+        <div style="margin: 20px auto; max-width: 100%;">
+            <label>🔗 YouTube Video ID: <input class="videoIdInput" style="width: 300px;" type="text" value=""/></label><br/><br/>
+            <label>📝 Chinese Transcript: <textarea class="scriptZH" rows="6" style="width: 100%;"></textarea></label><br/><br/>
+            <label>🇻🇳 Vietnamese Transcript: <textarea class="scriptVI" rows="6" style="width: 100%;"></textarea></label><br/><br/>
+            <br/>
+            <button class="loadBtn">▶️ Load Video + Transcript</button><br/>
+            <button class="saveBtn">💾 Save Script</button>
+            <br/><br/>
+            <label>📂 Load Saved Script (.json):
+              <input type="file" class="loadFileInput" accept=".json">
+            </label>
+        </div>
+        <div class="player-container"></div>
+        <h3>Transcript (ZH + VI)</h3>
+        <div class="transcript"></div>
+    </div>
+
+    <div class="pane" id="pane2">
+        <h2>Pane 2</h2>
+        <div style="margin: 20px auto; max-width: 100%;">
+            <label>🔗 YouTube Video ID: <input class="videoIdInput" style="width: 300px;" type="text" value=""/></label><br/><br/>
+            <label>📝 Chinese Transcript: <textarea class="scriptZH" rows="6" style="width: 100%;"></textarea></label><br/><br/>
+            <label>🇻🇳 Vietnamese Transcript: <textarea class="scriptVI" rows="6" style="width: 100%;"></textarea></label><br/><br/>
+            <br/>
+            <button class="loadBtn">▶️ Load Video + Transcript</button><br/>
+            <button class="saveBtn">💾 Save Script</button>
+            <br/><br/>
+            <label>📂 Load Saved Script (.json):
+              <input type="file" class="loadFileInput" accept=".json">
+            </label>
+        </div>
+        <div class="player-container"></div>
+        <h3>Transcript (ZH + VI)</h3>
+        <div class="transcript"></div>
+    </div>
+</div>
+
+<button id="globalTogglePause">Play All</button>
+
+<div id="hanzi-overlay"></div>
+<div id="hanzi-popup">
+    <h3>Luyện viết chữ Hán</h3>
+    <div id="hanzi-container"></div>
+    <div id="hanzi-popup-controls">
+        <button id="hanzi-review-btn">Xem lại tất cả</button>
+        <button id="hanzi-close-btn">Đóng</button>
+    </div>
+</div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+class TranscriptApp {
+    // ... (Toàn bộ mã của class TranscriptApp giữ nguyên không đổi)
+    constructor(paneId) {
+        this.pane = document.getElementById(paneId);
+        if (!this.pane) return;
+        
+        this.player = null;
+        this.transcriptData = [];
+        this.userScrolling = false;
+        this.scrollTimeout = null;
+
+        this.videoIdInput = this.pane.querySelector('.videoIdInput');
+        this.scriptZH = this.pane.querySelector('.scriptZH');
+        this.scriptVI = this.pane.querySelector('.scriptVI');
+        this.transcriptDiv = this.pane.querySelector('.transcript');
+        this.playerContainer = this.pane.querySelector('.player-container');
+
+        this.pane.querySelector('.loadBtn').onclick = () => this.loadVideoAndTranscript();
+        this.pane.querySelector('.saveBtn').onclick = () => this.saveScripts();
+        this.pane.querySelector('.loadFileInput').onchange = (event) => this.loadScriptFile(event);
+        
+        this.transcriptDiv.addEventListener('wheel', () => {
+            this.userScrolling = true;
+            clearTimeout(this.scrollTimeout);
+            this.scrollTimeout = setTimeout(() => this.userScrolling = false, 3000);
+        });
+    }
+    
+    onPlayerStateChange(event) {
+        if (event.data === YT.PlayerState.PLAYING) {
+            requestAnimationFrame(() => this.trackCurrentLine());
+        }
+        updateGlobalPauseButtonState();
+    }
+
+    trackCurrentLine() {
+        if (!this.player || typeof this.player.getCurrentTime !== 'function') return;
+        const currentTime = this.player.getCurrentTime();
+        let currentId = null;
+        for (let i = 0; i < this.transcriptData.length; i++) {
+            const line = this.transcriptData[i];
+            if (currentTime >= line.time && (i === this.transcriptData.length - 1 || currentTime < this.transcriptData[i + 1].time)) {
+                currentId = line.id;
+                break;
+            }
+        }
+        this.transcriptDiv.querySelectorAll('.line').forEach(el => el.classList.remove('highlight'));
+        if (currentId && currentId.startsWith('zh_')) {
+            const activeEl = this.transcriptDiv.querySelector('#' + currentId);
+            if (activeEl) {
+                activeEl.classList.add('highlight');
+                if (!this.userScrolling) {
+                    activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+        }
+        if (this.player.getPlayerState() === YT.PlayerState.PLAYING) {
+            requestAnimationFrame(() => this.trackCurrentLine());
+        }
+    }
+
+    parseTranscript(raw) {
+        const lines = raw.trim().split('\n');
+        const parsed = [];
+        let currentTime = null, currentText = [];
+        for (const line of lines) {
+            const match = line.match(/^(\d+):(\d{2})$/);
+            if (match) {
+                if (currentTime !== null && currentText.length)
+                    parsed.push({ time: currentTime, text: currentText.join('<br>') });
+                currentTime = parseInt(match[1]) * 60 + parseInt(match[2]);
+                currentText = [];
+            } else if(line.trim() !== '') {
+                currentText.push(line.trim());
+            }
+        }
+        if (currentTime !== null && currentText.length)
+            parsed.push({ time: currentTime, text: currentText.join('<br>') });
+        return parsed;
+    }
+
+    createLineCard(id, time, fallbackText, className) {
+        const div = document.createElement('div');
+        div.className = `line ${className}`;
+        div.dataset.time = time;
+        div.id = id;
+        div.innerHTML = fallbackText;
+        div.setAttribute('tabindex', '0');
+
+        div.onclick = () => {
+            if (this.player?.seekTo) {
+                this.player.seekTo(time, true);
+            }
+            div.focus();
+        };
+        
+        div.ondblclick = (e) => {
+            e.currentTarget.contentEditable = true;
+            e.currentTarget.focus();
+        };
+
+        if (className === 'user') {
+            const btn = document.createElement('button');
+            btn.className = 'record-btn';
+            btn.textContent = '🎤';
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                this.startSpeechRecognition(div, fallbackText);
+            };
+            div.appendChild(btn);
+        }
+        return div;
+    }
+
+    loadVideoAndTranscript() {
+        const videoId = this.videoIdInput.value.trim();
+        const rawZH = this.scriptZH.value.trim();
+        const rawVI = this.scriptVI.value.trim();
+        
+        if (this.player && typeof this.player.destroy === 'function') {
+            this.player.destroy();
+        }
+
+        const playerDiv = document.createElement('div');
+        const uniquePlayerId = `player_${this.pane.id}`;
+        playerDiv.id = uniquePlayerId;
+        this.playerContainer.innerHTML = '';
+        this.playerContainer.appendChild(playerDiv);
+
+        this.player = new YT.Player(uniquePlayerId, {
+            height: '360',
+            width: '100%',
+            videoId: videoId,
+            events: {
+                'onStateChange': (e) => this.onPlayerStateChange(e)
+            }
+        });
+
+        const zh = this.parseTranscript(rawZH);
+        const vi = this.parseTranscript(rawVI);
+        this.transcriptDiv.innerHTML = '';
+        this.transcriptData = [];
+        
+        let i_zh = 0, i_vi = 0;
+        
+        while (i_zh < zh.length || i_vi < vi.length) {
+            const line_zh = zh[i_zh];
+            const line_vi = vi[i_vi];
+
+            if (line_zh && (!line_vi || line_zh.time <= line_vi.time)) {
+                const text = `[${Math.floor(line_zh.time / 60)}:${(line_zh.time % 60).toString().padStart(2, '0')}] ${line_zh.text}`;
+                const uniqueId = `zh_${this.pane.id}_${i_zh}`;
+                const div = this.createLineCard(uniqueId, line_zh.time, text, 'user');
+                this.transcriptDiv.appendChild(div);
+                this.transcriptData.push({ id: uniqueId, time: line_zh.time });
+                i_zh++;
+            } else if (line_vi) {
+                 const text = `[VI] ${line_vi.text}`;
+                 const uniqueId = `vi_${this.pane.id}_${i_vi}`;
+                 const div = this.createLineCard(uniqueId, line_vi.time, text, 'machine');
+                 this.transcriptDiv.appendChild(div);
+                 i_vi++;
+            }
+        }
+    }
+
+    saveScripts() {
+        const videoId = this.videoIdInput.value.trim();
+        const lines = this.transcriptDiv.querySelectorAll('.line');
+        const zhChunks = [];
+        const viChunks = [];
+    
+        for (const line of lines) {
+            const time = parseInt(line.dataset.time || '0');
+            const minutes = Math.floor(time / 60);
+            const seconds = (time % 60).toString().padStart(2, '0');
+    
+            let content = line.innerHTML
+                .replace(/<button[^>]*>.*?<\/button>/g, '')  
+                .replace(/<div class="result">.*?<\/div>/g, '')  
+                .replace(/<br\s*\/?>/gi, '\n')
+                .replace(/\[\d+:\d+\]/g, '')
+                .replace(/\[VI\]/g, '')
+                .replace(/<[^>]+>/g, '')       
+                .replace(/\n{2,}/g, '\n')      
+                .trim();
+    
+            const block = `${minutes}:${seconds}\n${content}`;
+    
+            if (line.classList.contains('user')) {
+                zhChunks.push(block);
+            } else if (line.classList.contains('machine')) {
+                viChunks.push(block);
+            }
+        }
+    
+        const blob = new Blob([JSON.stringify({
+            videoId,
+            zhText: zhChunks.join('\n\n'),
+            viText: viChunks.join('\n\n')
+        }, null, 2)], { type: 'application/json' });
+    
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `transcript_${videoId || 'video'}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+    
+    loadScriptFile(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = JSON.parse(e.target.result);
+                this.videoIdInput.value = data.videoId || '';
+                this.scriptZH.value = data.zhText || '';
+                this.scriptVI.value = data.viText || '';
+            } catch (err) {
+                alert('Invalid JSON file.');
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    startSpeechRecognition(div, expectedText) {
+        if (!('webkitSpeechRecognition' in window)) {
+            alert('Speech recognition not supported in this browser');
+            return;
+        }
+        const recognition = new webkitSpeechRecognition();
+        recognition.lang = 'zh-CN';
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+        
+        const existingResult = div.querySelector('.result');
+        if (existingResult) existingResult.remove();
+        
+        recognition.start();
+
+        recognition.onresult = (event) => {
+            const spokenText = event.results[0][0].transcript;
+            const cleanExpectedText = expectedText.replace(/\[.*?\]/g, '').trim();
+            const score = this.similarity(spokenText.toLowerCase(), cleanExpectedText.toLowerCase());
+            const resultEl = document.createElement('div');
+            resultEl.className = 'result';
+            resultEl.textContent = `You said: "${spokenText}" → Similarity: ${Math.round(score * 100)}%`;
+            div.appendChild(resultEl);
+        };
+
+        recognition.onerror = (event) => {
+            alert('Error occurred in recognition: ' + event.error);
+        };
+    }
+
+    similarity(s1, s2) {
+        const longer = s1.length > s2.length ? s1 : s2;
+        const shorter = s1.length > s2.length ? s2 : s1;
+        const longerLength = longer.length;
+        if (longerLength === 0) return 1.0;
+        return (longerLength - this.editDistance(longer, shorter)) / longerLength;
+    }
+
+    editDistance(s1, s2) {
+        s1 = s1.toLowerCase();
+        s2 = s2.toLowerCase();
+        const costs = [];
+        for (let i = 0; i <= s1.length; i++) {
+            let lastValue = i;
+            for (let j = 0; j <= s2.length; j++) {
+                if (i === 0) {
+                    costs[j] = j;
+                } else if (j > 0) {
+                    let newValue = costs[j - 1];
+                    if (s1.charAt(i - 1) !== s2.charAt(j - 1))
+                        newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+                    costs[j - 1] = lastValue;
+                    lastValue = newValue;
+                }
+            }
+            if (i > 0) costs[s2.length] = lastValue;
+        }
+        return costs[s2.length];
+    }
+}
+
+// --- GLOBAL CONTROLS AND STATE ---
+
+let app1, app2;
+let currentPaneApp = null;
+
+function onYouTubeIframeAPIReady() {
+    app1 = new TranscriptApp('pane1');
+    app2 = new TranscriptApp('pane2');
+    setupGlobalControls();
+    // THÊM MỚI: Khởi tạo các điều khiển cho popup Hanzi Writer
+    setupHanziWriterPopup();
+}
+
+function updateGlobalPauseButtonState() {
+    // ... (Hàm này giữ nguyên không đổi)
+    const globalBtn = document.getElementById('globalTogglePause');
+    if (!globalBtn || !app1 || !app2) return;
+    const isPlaying1 = app1.player && app1.player.getPlayerState() === YT.PlayerState.PLAYING;
+    const isPlaying2 = app2.player && app2.player.getPlayerState() === YT.PlayerState.PLAYING;
+    if (isPlaying1 || isPlaying2) { globalBtn.textContent = 'Pause All'; } 
+    else { globalBtn.textContent = 'Play All'; }
+}
+
+function setupGlobalControls() {
+    // ... (Hàm này giữ nguyên không đổi)
+    const globalBtn = document.getElementById('globalTogglePause');
+    if (!globalBtn) return;
+    globalBtn.onclick = () => {
+        if (!app1 || !app2) return;
+        const isPlaying1 = app1.player && app1.player.getPlayerState() === YT.PlayerState.PLAYING;
+        const isPlaying2 = app2.player && app2.player.getPlayerState() === YT.PlayerState.PLAYING;
+        if (isPlaying1 || isPlaying2) {
+            if (app1.player?.pauseVideo) app1.player.pauseVideo();
+            if (app2.player?.pauseVideo) app2.player.pauseVideo();
+        } else {
+            if (app1.player?.playVideo) app1.player.playVideo();
+            if (app2.player?.playVideo) app2.player.playVideo();
+        }
+    };
+}
+
+document.addEventListener('focusin', e => {
+    // ... (Hàm này giữ nguyên không đổi)
+    const pane = e.target.closest('.pane');
+    if (pane) { currentPaneApp = pane.id === 'pane1' ? app1 : app2; }
+});
+
+document.addEventListener('mouseup', e => {
+    // ... (Hàm này giữ nguyên không đổi)
+    const sel = window.getSelection();
+    if (sel.toString().length > 0 && e.target.closest('.pane')) {
+        const rect = sel.getRangeAt(0).getBoundingClientRect();
+        const toolbar = document.getElementById('toolbar');
+        toolbar.style.top = `${window.scrollY + rect.top - 40}px`; 
+        toolbar.style.left = `${window.scrollX + rect.left}px`; 
+        toolbar.style.display = 'block';
+    } else {
+        document.getElementById('toolbar').style.display = 'none';
+    }
+});
+
+function execCmd(cmd, value = null) {
+    // ... (Hàm này giữ nguyên không đổi)
+    document.execCommand(cmd, false, value);
+    document.getElementById('toolbar').style.display = 'none';
+    if(currentPaneApp) {
+      currentPaneApp.transcriptDiv.querySelectorAll('[contenteditable=true]').forEach(el => el.contentEditable = false);
+    }
+}
+
+document.addEventListener('keydown', (event) => {
+    // ... (Phần này của hàm giữ nguyên không đổi)
+    if (event.code === 'Space' && (event.target.tagName !== 'INPUT' && event.target.tagName !== 'TEXTAREA')) {
+      const activeElement = document.activeElement;
+      if (activeElement && activeElement.classList.contains('line')) {
+          event.preventDefault();
+          const time = parseFloat(activeElement.dataset.time);
+          if (isNaN(time)) return;
+          const parentPane = activeElement.closest('.pane');
+          if (!parentPane) return;
+          const targetApp = (parentPane.id === 'pane1') ? app1 : app2;
+          if (targetApp && targetApp.player && typeof targetApp.player.seekTo === 'function') {
+              targetApp.player.seekTo(time, true);
+          }
+      }
+    }
+
+    // THÊM MỚI: Kích hoạt Hanzi Writer bằng phím tắt
+    if (event.altKey && event.code === 'KeyP') {
+        event.preventDefault();
+        const selectedText = window.getSelection().toString().trim();
+        // Lọc để chỉ lấy các ký tự trong dải Unicode của chữ Hán
+        const chineseChars = selectedText.match(/[\u4e00-\u9fa5]/g);
+        if (chineseChars && chineseChars.length > 0) {
+            startHanziPractice(chineseChars);
+        } else {
+            alert("Vui lòng bôi đen chữ Hán để luyện viết.");
+        }
+    }
+});
+
+
+// --- THÊM MỚI: TOÀN BỘ LOGIC CHO TÍNH NĂNG HANZI WRITER ---
+
+let activeWriters = []; // Lưu các instance của Hanzi Writer
+
+function startHanziPractice(characters) {
+    const overlay = document.getElementById('hanzi-overlay');
+    const popup = document.getElementById('hanzi-popup');
+    const container = document.getElementById('hanzi-container');
+
+    // Dọn dẹp các lần mở trước
+    container.innerHTML = '';
+    activeWriters = [];
+
+    // Tạo các ô luyện viết cho từng ký tự
+    characters.forEach((char, index) => {
+        const charDiv = document.createElement('div');
+        charDiv.className = 'hanzi-char-target';
+        charDiv.id = `hanzi-target-${index}`;
+        container.appendChild(charDiv);
+
+        const writer = HanziWriter.create(charDiv.id, char, {
+            width: 120,
+            height: 120,
+            padding: 5,
+            showOutline: true,
+            strokeAnimationSpeed: 1,
+            delayBetweenStrokes: 200,
+            // Bật chế độ kiểm tra
+            showCharacter: false,
+            strokeColor: '#555',
+            highlightColor: '#AAF',
+            outlineColor: '#DDD',
+            drawingColor: '#333',
+            drawingWidth: 5,
+            // Các màu cho chế độ kiểm tra
+            radicalColor: '#166E1A'
+        });
+
+        writer.quiz(); // Bắt đầu chế độ kiểm tra
+        activeWriters.push(writer);
+    });
+
+    // Hiển thị popup
+    overlay.style.display = 'block';
+    popup.style.display = 'block';
+}
+
+function setupHanziWriterPopup() {
+    const overlay = document.getElementById('hanzi-overlay');
+    const popup = document.getElementById('hanzi-popup');
+    const closeBtn = document.getElementById('hanzi-close-btn');
+    const reviewBtn = document.getElementById('hanzi-review-btn');
+
+    function closePopup() {
+        overlay.style.display = 'none';
+        popup.style.display = 'none';
+        // Dọn dẹp để giải phóng bộ nhớ
+        document.getElementById('hanzi-container').innerHTML = '';
+        activeWriters = [];
+    }
+    
+    closeBtn.onclick = closePopup;
+    overlay.onclick = closePopup;
+
+    reviewBtn.onclick = async () => {
+        if (activeWriters.length === 0) return;
+        
+        // Vô hiệu hóa nút để tránh click nhiều lần
+        reviewBtn.disabled = true;
+
+        for (const writer of activeWriters) {
+            await writer.animateCharacter();
+        }
+
+        // Kích hoạt lại nút sau khi hoàn tất
+        reviewBtn.disabled = false;
+    };
+}
+</script>
+</body>
+</html>
