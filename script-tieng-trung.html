@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -44,6 +43,46 @@
       z-index: 1000;
     }
 </style>
+<script src="https://www.youtube.com/iframe_api">
+  
+</script>
+</head>
+<body>
+<div style="margin: 20px auto; max-width: 800px;">
+<label>🔗 YouTube Video ID: <input id="videoIdInput" style="width: 300px;" type="text" value=""/></label><br/><br/>
+<label>📝 Chinese Transcript: <textarea id="scriptZH" rows="6" style="width: 100%;"></textarea></label><br/><br/>
+<label>🇻🇳 Vietnamese Transcript: <textarea id="scriptVI" rows="6" style="width: 100%;"></textarea></label><br/><br/>
+<br/>
+<button onclick="loadVideoAndTranscript()">▶️ Load Video + Transcript</button><br/>
+<button onclick="saveScripts()">💾 Save Script</button>
+<br/><br/>
+<label>📂 Load Saved Script (.json): 
+  <input type="file" id="loadFileInput" accept=".json" onchange="loadScriptFile(event)">
+</label>
+
+
+</div>
+<div id="player"></div>
+<h3>Transcript (ZH + VI)</h3>
+<div id="toolbar">
+<button onclick="execCmd('bold')"><b>B</b></button>
+<button onclick="execCmd('italic')"><i>I</i></button>
+<button onclick="execCmd('underline')"><u>U</u></button>
+<input onchange="execCmd('foreColor', this.value)" type="color"/>
+</div>
+<div id="transcript"></div>
+<button id="togglePause" style="
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999;
+  padding: 10px 15px;
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;">Pause</button>
 <script>
   let player;
   let transcriptData = [];
