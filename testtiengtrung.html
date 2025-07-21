@@ -120,7 +120,6 @@
 <script src="https://www.youtube.com/iframe_api"></script>
 <script>
 class TranscriptApp {
-    // ... (Toàn bộ mã của class TranscriptApp giữ nguyên không đổi)
     constructor(paneId) {
         this.pane = document.getElementById(paneId);
         if (!this.pane) return;
@@ -299,6 +298,7 @@ class TranscriptApp {
             let content = line.innerHTML
                 .replace(/<button[^>]*>.*?<\/button>/g, '')  
                 .replace(/<div class="result">.*?<\/div>/g, '')  
+                .replace(/<div class="playback-container">.*?<\/div>/g, '') // Thêm dòng này
                 .replace(/<br\s*\/?>/gi, '\n')
                 .replace(/\[\d+:\d+\]/g, '')
                 .replace(/\[VI\]/g, '')
@@ -347,33 +347,79 @@ class TranscriptApp {
     }
 
     startSpeechRecognition(div, expectedText) {
-        if (!('webkitSpeechRecognition' in window)) {
-            alert('Speech recognition not supported in this browser');
-            return;
-        }
-        const recognition = new webkitSpeechRecognition();
-        recognition.lang = 'zh-CN';
-        recognition.interimResults = false;
-        recognition.maxAlternatives = 1;
-        
+        // Xóa kết quả và nút nghe lại cũ
         const existingResult = div.querySelector('.result');
         if (existingResult) existingResult.remove();
-        
-        recognition.start();
+        const existingPlayback = div.querySelector('.playback-container');
+        if (existingPlayback) existingPlayback.remove();
 
-        recognition.onresult = (event) => {
-            const spokenText = event.results[0][0].transcript;
-            const cleanExpectedText = expectedText.replace(/\[.*?\]/g, '').trim();
-            const score = this.similarity(spokenText.toLowerCase(), cleanExpectedText.toLowerCase());
-            const resultEl = document.createElement('div');
-            resultEl.className = 'result';
-            resultEl.textContent = `You said: "${spokenText}" → Similarity: ${Math.round(score * 100)}%`;
-            div.appendChild(resultEl);
-        };
+        if (!('webkitSpeechRecognition' in window) || !navigator.mediaDevices) {
+            alert('Trình duyệt của bạn không hỗ trợ tính năng này.');
+            return;
+        }
 
-        recognition.onerror = (event) => {
-            alert('Error occurred in recognition: ' + event.error);
-        };
+        // 1. Xin quyền truy cập micro
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                // ---- Bắt đầu ghi âm ----
+                const mediaRecorder = new MediaRecorder(stream);
+                const audioChunks = [];
+
+                mediaRecorder.ondataavailable = event => {
+                    audioChunks.push(event.data);
+                };
+
+                // Khi ghi âm dừng, tạo nút nghe lại
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    
+                    const playbackContainer = document.createElement('div');
+                    playbackContainer.className = 'playback-container';
+                    
+                    const listenButton = document.createElement('button');
+                    listenButton.textContent = '▶️ Nghe lại';
+                    listenButton.style.marginTop = '5px';
+                    listenButton.onclick = () => new Audio(audioUrl).play();
+                    
+                    playbackContainer.appendChild(listenButton);
+                    div.appendChild(playbackContainer);
+                };
+                
+                mediaRecorder.start();
+
+                // ---- Bắt đầu nhận dạng giọng nói ----
+                const recognition = new webkitSpeechRecognition();
+                recognition.lang = 'zh-CN';
+                recognition.interimResults = false;
+                recognition.maxAlternatives = 1;
+                
+                recognition.onend = () => {
+                    mediaRecorder.stop();
+                    stream.getTracks().forEach(track => track.stop());
+                };
+
+                recognition.onresult = (event) => {
+                    const spokenText = event.results[0][0].transcript;
+                    const cleanExpectedText = expectedText.replace(/\[.*?\]/g, '').trim();
+                    const score = this.similarity(spokenText, cleanExpectedText); // Không cần toLowerCase cho tiếng Trung
+                    const resultEl = document.createElement('div');
+                    resultEl.className = 'result';
+                    resultEl.innerHTML = `Bạn nói: "<em>${spokenText}</em>" → Tương đồng: <b>${Math.round(score * 100)}%</b>`;
+                    div.appendChild(resultEl);
+                };
+
+                recognition.onerror = (event) => {
+                    alert('Lỗi nhận dạng giọng nói: ' + event.error);
+                    mediaRecorder.stop();
+                };
+
+                recognition.start();
+            })
+            .catch(err => {
+                alert('Không thể truy cập micro. Vui lòng cấp quyền.');
+                console.error("Lỗi getUserMedia:", err);
+            });
     }
 
     similarity(s1, s2) {
@@ -385,8 +431,6 @@ class TranscriptApp {
     }
 
     editDistance(s1, s2) {
-        s1 = s1.toLowerCase();
-        s2 = s2.toLowerCase();
         const costs = [];
         for (let i = 0; i <= s1.length; i++) {
             let lastValue = i;
@@ -416,12 +460,10 @@ function onYouTubeIframeAPIReady() {
     app1 = new TranscriptApp('pane1');
     app2 = new TranscriptApp('pane2');
     setupGlobalControls();
-    // THÊM MỚI: Khởi tạo các điều khiển cho popup Hanzi Writer
     setupHanziWriterPopup();
 }
 
 function updateGlobalPauseButtonState() {
-    // ... (Hàm này giữ nguyên không đổi)
     const globalBtn = document.getElementById('globalTogglePause');
     if (!globalBtn || !app1 || !app2) return;
     const isPlaying1 = app1.player && app1.player.getPlayerState() === YT.PlayerState.PLAYING;
@@ -431,7 +473,6 @@ function updateGlobalPauseButtonState() {
 }
 
 function setupGlobalControls() {
-    // ... (Hàm này giữ nguyên không đổi)
     const globalBtn = document.getElementById('globalTogglePause');
     if (!globalBtn) return;
     globalBtn.onclick = () => {
@@ -449,13 +490,11 @@ function setupGlobalControls() {
 }
 
 document.addEventListener('focusin', e => {
-    // ... (Hàm này giữ nguyên không đổi)
     const pane = e.target.closest('.pane');
     if (pane) { currentPaneApp = pane.id === 'pane1' ? app1 : app2; }
 });
 
 document.addEventListener('mouseup', e => {
-    // ... (Hàm này giữ nguyên không đổi)
     const sel = window.getSelection();
     if (sel.toString().length > 0 && e.target.closest('.pane')) {
         const rect = sel.getRangeAt(0).getBoundingClientRect();
@@ -469,7 +508,6 @@ document.addEventListener('mouseup', e => {
 });
 
 function execCmd(cmd, value = null) {
-    // ... (Hàm này giữ nguyên không đổi)
     document.execCommand(cmd, false, value);
     document.getElementById('toolbar').style.display = 'none';
     if(currentPaneApp) {
@@ -478,7 +516,6 @@ function execCmd(cmd, value = null) {
 }
 
 document.addEventListener('keydown', (event) => {
-    // ... (Phần này của hàm giữ nguyên không đổi)
     if (event.code === 'Space' && (event.target.tagName !== 'INPUT' && event.target.tagName !== 'TEXTAREA')) {
       const activeElement = document.activeElement;
       if (activeElement && activeElement.classList.contains('line')) {
@@ -494,11 +531,9 @@ document.addEventListener('keydown', (event) => {
       }
     }
 
-    // THÊM MỚI: Kích hoạt Hanzi Writer bằng phím tắt
     if (event.altKey && event.code === 'KeyP') {
         event.preventDefault();
         const selectedText = window.getSelection().toString().trim();
-        // Lọc để chỉ lấy các ký tự trong dải Unicode của chữ Hán
         const chineseChars = selectedText.match(/[\u4e00-\u9fa5]/g);
         if (chineseChars && chineseChars.length > 0) {
             startHanziPractice(chineseChars);
@@ -508,21 +543,18 @@ document.addEventListener('keydown', (event) => {
     }
 });
 
+// --- LOGIC CHO TÍNH NĂNG HANZI WRITER ---
 
-// --- THÊM MỚI: TOÀN BỘ LOGIC CHO TÍNH NĂNG HANZI WRITER ---
-
-let activeWriters = []; // Lưu các instance của Hanzi Writer
+let activeWriters = []; 
 
 function startHanziPractice(characters) {
     const overlay = document.getElementById('hanzi-overlay');
     const popup = document.getElementById('hanzi-popup');
     const container = document.getElementById('hanzi-container');
 
-    // Dọn dẹp các lần mở trước
     container.innerHTML = '';
     activeWriters = [];
 
-    // Tạo các ô luyện viết cho từng ký tự
     characters.forEach((char, index) => {
         const charDiv = document.createElement('div');
         charDiv.className = 'hanzi-char-target';
@@ -530,28 +562,18 @@ function startHanziPractice(characters) {
         container.appendChild(charDiv);
 
         const writer = HanziWriter.create(charDiv.id, char, {
-            width: 120,
-            height: 120,
-            padding: 5,
-            showOutline: true,
-            strokeAnimationSpeed: 1,
-            delayBetweenStrokes: 200,
-            // Bật chế độ kiểm tra
-            showCharacter: false,
-            strokeColor: '#555',
-            highlightColor: '#AAF',
-            outlineColor: '#DDD',
-            drawingColor: '#333',
-            drawingWidth: 5,
-            // Các màu cho chế độ kiểm tra
+            width: 120, height: 120, padding: 5, showOutline: true,
+            strokeAnimationSpeed: 1, delayBetweenStrokes: 200,
+            showCharacter: false, strokeColor: '#555',
+            highlightColor: '#AAF', outlineColor: '#DDD',
+            drawingColor: '#333', drawingWidth: 5,
             radicalColor: '#166E1A'
         });
 
-        writer.quiz(); // Bắt đầu chế độ kiểm tra
+        writer.quiz();
         activeWriters.push(writer);
     });
 
-    // Hiển thị popup
     overlay.style.display = 'block';
     popup.style.display = 'block';
 }
@@ -565,7 +587,6 @@ function setupHanziWriterPopup() {
     function closePopup() {
         overlay.style.display = 'none';
         popup.style.display = 'none';
-        // Dọn dẹp để giải phóng bộ nhớ
         document.getElementById('hanzi-container').innerHTML = '';
         activeWriters = [];
     }
@@ -575,15 +596,10 @@ function setupHanziWriterPopup() {
 
     reviewBtn.onclick = async () => {
         if (activeWriters.length === 0) return;
-        
-        // Vô hiệu hóa nút để tránh click nhiều lần
         reviewBtn.disabled = true;
-
         for (const writer of activeWriters) {
             await writer.animateCharacter();
         }
-
-        // Kích hoạt lại nút sau khi hoàn tất
         reviewBtn.disabled = false;
     };
 }
