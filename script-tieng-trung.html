@@ -1,8 +1,9 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<title>Transcript (ZH + VI)</title>
+<title>Transcript (EN + VI)</title>
 <style>
     body { font-family: Arial, sans-serif; }
     #player { margin-bottom: 15px; }
@@ -50,7 +51,7 @@
 <body>
 <div style="margin: 20px auto; max-width: 800px;">
 <label>🔗 YouTube Video ID: <input id="videoIdInput" style="width: 300px;" type="text" value=""/></label><br/><br/>
-<label>📝 Chinese Transcript: <textarea id="scriptZH" rows="6" style="width: 100%;"></textarea></label><br/><br/>
+<label>📝 English Transcript: <textarea id="scriptEN" rows="6" style="width: 100%;"></textarea></label><br/><br/>
 <label>🇻🇳 Vietnamese Transcript: <textarea id="scriptVI" rows="6" style="width: 100%;"></textarea></label><br/><br/>
 <br/>
 <button onclick="loadVideoAndTranscript()">▶️ Load Video + Transcript</button><br/>
@@ -63,7 +64,7 @@
 
 </div>
 <div id="player"></div>
-<h3>Transcript (ZH + VI)</h3>
+<h3>Transcript (EN + VI)</h3>
 <div id="toolbar">
 <button onclick="execCmd('bold')"><b>B</b></button>
 <button onclick="execCmd('italic')"><i>I</i></button>
@@ -122,13 +123,13 @@
       }
     }
     document.querySelectorAll('.line').forEach(el => el.classList.remove('highlight'));
-    if (currentId && currentId.startsWith('zh_')) {
+    if (currentId && currentId.startsWith('en_')) {
       const activeEl = document.getElementById(currentId);
       if (activeEl) {
         activeEl.classList.add('highlight');
         if (!userScrolling) {
-          activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
+        activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
       }
     }
     if (player.getPlayerState() === YT.PlayerState.PLAYING) {
@@ -179,7 +180,7 @@
 
   function loadVideoAndTranscript() {
     const videoId = document.getElementById('videoIdInput').value.trim();
-    const rawZH = document.getElementById('scriptZH').value.trim();
+    const rawEN = document.getElementById('scriptEN').value.trim();
     const rawVI = document.getElementById('scriptVI').value.trim();
 
     if (player && player.loadVideoById) {
@@ -190,18 +191,18 @@
       });
     }
 
-    const zh = parseTranscript(rawZH);
+    const en = parseTranscript(rawEN);
     const vi = parseTranscript(rawVI);
     const transcript = document.getElementById('transcript');
     transcript.innerHTML = '';
     transcriptData = [];
 
-    for (let i = 0; i < Math.max(zh.length, vi.length); i++) {
-      if (zh[i]) {
-        const text = `[${Math.floor(zh[i].time / 60)}:${(zh[i].time % 60).toString().padStart(2, '0')}] ${zh[i].text}`;
-        const div = createLineCard('zh_' + i, zh[i].time, text, 'user');
+    for (let i = 0; i < Math.max(en.length, vi.length); i++) {
+      if (en[i]) {
+        const text = `[${Math.floor(en[i].time / 60)}:${(en[i].time % 60).toString().padStart(2, '0')}] ${en[i].text}`;
+        const div = createLineCard('en_' + i, en[i].time, text, 'user');
         transcript.appendChild(div);
-        transcriptData.push({ id: 'zh_' + i, time: zh[i].time });
+        transcriptData.push({ id: 'en_' + i, time: en[i].time });
       }
       if (vi[i]) {
         const text = `[VI] ${vi[i].text}`;
@@ -211,13 +212,15 @@
     }
   }
 
-  document.getElementById('transcript').addEventListener('wheel', () => {
-    userScrolling = true;
-    clearTimeout(scrollTimeout);
-    scrollTimeout = setTimeout(() => userScrolling = false, 9000);
-  });
+  
+document.getElementById('transcript').addEventListener('wheel', () => {
+  userScrolling = true;
+  clearTimeout(scrollTimeout);
+  scrollTimeout = setTimeout(() => userScrolling = false, 9000);
+});
 
-  document.addEventListener('dblclick', e => {
+
+document.addEventListener('dblclick', e => {
     if (e.target.classList.contains('line')) {
       e.target.contentEditable = true;
       e.target.focus();
@@ -229,8 +232,8 @@
     if (sel.toString().length > 0) {
       const rect = sel.getRangeAt(0).getBoundingClientRect();
       const toolbar = document.getElementById('toolbar');
-      toolbar.style.top = `${window.scrollY + rect.top - 40}px`;
-      toolbar.style.left = `${window.scrollX + rect.left}px`;
+      toolbar.style.top = `${window.scrollY + rect.top - 40}px`; 
+      toolbar.style.left = `${window.scrollX + rect.left}px`; 
       toolbar.style.display = 'block';
     } else {
       document.getElementById('toolbar').style.display = 'none';
@@ -247,73 +250,72 @@
     if (oldResult) oldResult.remove();
     const oldPlayback = div.querySelector('.playback-container');
     if (oldPlayback) oldPlayback.remove();
-
+      
     if (!('webkitSpeechRecognition' in window) || !navigator.mediaDevices) {
-      alert('Trình duyệt của bạn không hỗ trợ tính năng này.');
+      alert('Speech recognition or recording not supported in this browser');
       return;
     }
 
     // 1. Xin quyền truy cập micro
     navigator.mediaDevices.getUserMedia({ audio: true })
-      .then(stream => {
-        // ---- Bắt đầu phần ghi âm ----
-        const mediaRecorder = new MediaRecorder(stream);
-        const audioChunks = [];
+        .then(stream => {
+            // --- Bắt đầu phần ghi âm ---
+            const mediaRecorder = new MediaRecorder(stream);
+            const audioChunks = [];
 
-        mediaRecorder.ondataavailable = event => {
-          audioChunks.push(event.data);
-        };
+            mediaRecorder.ondataavailable = event => {
+                audioChunks.push(event.data);
+            };
 
-        // Khi ghi âm dừng, tạo nút Nghe lại
-        mediaRecorder.onstop = () => {
-          const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-          const audioUrl = URL.createObjectURL(audioBlob);
-          const playbackContainer = document.createElement('div');
-          playbackContainer.className = 'playback-container';
-          
-          const listenButton = document.createElement('button');
-          listenButton.textContent = '▶️ Nghe lại';
-          listenButton.style.marginTop = '5px';
-          listenButton.onclick = () => new Audio(audioUrl).play();
-          
-          playbackContainer.appendChild(listenButton);
-          div.appendChild(playbackContainer);
-        };
-        
-        mediaRecorder.start();
+            // Khi ghi âm dừng, tạo nút Nghe lại
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const playbackContainer = document.createElement('div');
+                playbackContainer.className = 'playback-container';
+                
+                const listenButton = document.createElement('button');
+                listenButton.textContent = '▶️ Listen Again';
+                listenButton.style.marginTop = '5px';
+                listenButton.onclick = () => new Audio(audioUrl).play();
+                
+                playbackContainer.appendChild(listenButton);
+                div.appendChild(playbackContainer);
+            };
+            
+            mediaRecorder.start();
 
-        // ---- Bắt đầu phần nhận dạng giọng nói ----
-        const recognition = new webkitSpeechRecognition();
-        recognition.lang = 'zh-CN';
-        recognition.interimResults = false;
-        recognition.maxAlternatives = 1;
-        
-        recognition.onend = () => {
-          mediaRecorder.stop();
-          stream.getTracks().forEach(track => track.stop());
-        };
+            // --- Bắt đầu phần nhận dạng giọng nói ---
+            const recognition = new webkitSpeechRecognition();
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
 
-        recognition.onresult = function(event) {
-          const spokenText = event.results[0][0].transcript;
-          const score = similarity(spokenText.toLowerCase(), expectedText.replace(/\[.*?\]/g, '').toLowerCase());
-          const resultEl = document.createElement('div');
-          resultEl.className = 'result';
-          resultEl.innerHTML = `Bạn nói: "<em>${spokenText}</em>" → Tương đồng: <b>${Math.round(score * 100)}%</b>`;
-          div.appendChild(resultEl);
-        };
+            recognition.onend = () => {
+                mediaRecorder.stop();
+                stream.getTracks().forEach(track => track.stop()); // Tắt micro
+            };
+            
+            recognition.onresult = function(event) {
+                const spokenText = event.results[0][0].transcript;
+                const score = similarity(spokenText.toLowerCase(), expectedText.replace(/\[.*?\]/g, '').toLowerCase());
+                const resultEl = document.createElement('div');
+                resultEl.className = 'result';
+                resultEl.innerHTML = `You said: "<em>${spokenText}</em>" → Similarity: <b>${Math.round(score * 100)}%</b>`;
+                div.appendChild(resultEl);
+            };
 
-        recognition.onerror = function(event) {
-          alert('Lỗi nhận dạng: ' + event.error);
-          mediaRecorder.stop();
-        };
+            recognition.onerror = function(event) {
+                alert('Error occurred in recognition: ' + event.error);
+                mediaRecorder.stop();
+            };
 
-        recognition.start();
-
-      })
-      .catch(err => {
-        alert('Không thể truy cập micro. Vui lòng cấp quyền.');
-        console.error("Lỗi getUserMedia:", err);
-      });
+            recognition.start();
+        })
+        .catch(err => {
+            alert('Could not access the microphone. Please grant permission.');
+            console.error("Error accessing microphone:", err);
+        });
   }
 
   function similarity(s1, s2) {
@@ -346,39 +348,54 @@
     return costs[s2.length];
   }
 
-  function saveScripts() {
+function saveScripts() {
     const videoId = document.getElementById('videoIdInput').value.trim();
     const lines = document.querySelectorAll('.line');
     const zhChunks = [];
     const viChunks = [];
 
     for (const line of lines) {
-      const time = parseInt(line.dataset.time || '0');
-      const minutes = Math.floor(time / 60);
-      const seconds = (time % 60).toString().padStart(2, '0');
+        const time = parseInt(line.dataset.time || '0');
+        const minutes = Math.floor(time / 60);
+        const seconds = (time % 60).toString().padStart(2, '0');
 
-      let content = line.innerHTML
-        .replace(/<button[^>]*>.*?<\/button>/g, '')      // bỏ nút 🎤 và nút Nghe lại
-        .replace(/<div class="result">.*?<\/div>/g, '')      // bỏ kết quả phát âm
-        .replace(/<div class="playback-container">.*?<\/div>/g, '') // bỏ container nút nghe lại
-        .replace(/<br\s*\/?>/gi, '\n')                  // chuyển <br> thành xuống dòng
-        .replace(/<[^>]+>/g, '')                        // xoá thẻ HTML
-        .replace(/\n{2,}/g, '\n')                       // xoá dòng trắng thừa
-        .trim();
+        // Lấy nội dung "sạch" bằng cách xóa các thẻ và phần tử không cần thiết
+        let content = line.innerHTML
+            .replace(/<button[^>]*>.*?<\/button>/g, '')      // bỏ nút 🎤 và nút Nghe lại
+            .replace(/<div class="result">.*?<\/div>/g, '')      // bỏ kết quả phát âm
+            .replace(/<div class="playback-container">.*?<\/div>/g, '') // bỏ container nút nghe lại
+            .replace(/<br\s*\/?>/gi, '\n')                  // chuyển <br> thành xuống dòng
+            .replace(/<[^>]+>/g, '')                        // xoá thẻ HTML
+            .replace(/\n{2,}/g, '\n')                       // xoá dòng trắng thừa
+            .trim();
 
-      const block = `${minutes}:${seconds}\n${content}`;
+        // **PHẦN SỬA LỖI BẮT ĐẦU TỪ ĐÂY**
+        let cleanContent;
 
-      if (line.classList.contains('user')) {
-        zhChunks.push(block);
-      } else if (line.classList.contains('machine')) {
-        viChunks.push(block);
-      }
+        if (line.classList.contains('user')) { // Dòng tiếng Trung
+            // Xóa tiền tố thời gian [00:00] ở đầu dòng
+            cleanContent = content.replace(/^\[\d+:\d{2}\]\s*/, '');
+        } else if (line.classList.contains('machine')) { // Dòng tiếng Việt
+            // Xóa tiền tố [VI] ở đầu dòng
+            cleanContent = content.replace(/^\[VI\]\s*/, '');
+        } else {
+            cleanContent = content;
+        }
+
+        // Tạo khối dữ liệu từ nội dung đã được làm sạch
+        const block = `${minutes}:${seconds}\n${cleanContent}`;
+
+        if (line.classList.contains('user')) {
+            zhChunks.push(block);
+        } else if (line.classList.contains('machine')) {
+            viChunks.push(block);
+        }
     }
 
     const blob = new Blob([JSON.stringify({
-      videoId,
-      zhText: zhChunks.join('\n\n'),
-      viText: viChunks.join('\n\n')
+        videoId,
+        zhText: zhChunks.join('\n\n'),
+        viText: viChunks.join('\n\n')
     }, null, 2)], { type: 'application/json' });
 
     const url = URL.createObjectURL(blob);
@@ -387,25 +404,25 @@
     a.download = `transcript_${videoId || 'video'}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }
+}
 
-  function loadScriptFile(event) {
-    const file = event.target.files[0];
-    if (!file) return;
+function loadScriptFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      try {
-        const data = JSON.parse(e.target.result);
-        document.getElementById('videoIdInput').value = data.videoId || '';
-        document.getElementById('scriptZH').value = data.zhText || '';
-        document.getElementById('scriptVI').value = data.viText || '';
-      } catch (err) {
-        alert('Invalid JSON file.');
-      }
-    };
-    reader.readAsText(file);
-  }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      document.getElementById('videoIdInput').value = data.videoId || '';
+      document.getElementById('scriptEN').value = data.enText || '';
+      document.getElementById('scriptVI').value = data.viText || '';
+    } catch (err) {
+      alert('Invalid JSON file.');
+    }
+  };
+  reader.readAsText(file);
+}
 </script>
 </body>
 </html>
