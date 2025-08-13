@@ -394,7 +394,7 @@ function saveScripts() {
 
     const blob = new Blob([JSON.stringify({
         videoId,
-        enText: zhChunks.join('\n\n'),
+        enText: enChunks.join('\n\n'),
         viText: viChunks.join('\n\n')
     }, null, 2)], { type: 'application/json' });
 
@@ -426,4 +426,3 @@ function loadScriptFile(event) {
 </script>
 </body>
 </html>
-
