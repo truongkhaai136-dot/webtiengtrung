@@ -351,7 +351,7 @@ document.addEventListener('dblclick', e => {
 function saveScripts() {
     const videoId = document.getElementById('videoIdInput').value.trim();
     const lines = document.querySelectorAll('.line');
-    const zhChunks = [];
+    const enChunks = [];
     const viChunks = [];
 
     for (const line of lines) {
@@ -386,7 +386,7 @@ function saveScripts() {
         const block = `${minutes}:${seconds}\n${cleanContent}`;
 
         if (line.classList.contains('user')) {
-            zhChunks.push(block);
+            enChunks.push(block);
         } else if (line.classList.contains('machine')) {
             viChunks.push(block);
         }
@@ -394,7 +394,7 @@ function saveScripts() {
 
     const blob = new Blob([JSON.stringify({
         videoId,
-        zhText: zhChunks.join('\n\n'),
+        enText: zhChunks.join('\n\n'),
         viText: viChunks.join('\n\n')
     }, null, 2)], { type: 'application/json' });
 
@@ -426,3 +426,4 @@ function loadScriptFile(event) {
 </script>
 </body>
 </html>
+
