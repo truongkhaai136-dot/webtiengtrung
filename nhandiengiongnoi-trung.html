@@ -191,6 +191,8 @@
     let currentUtterance = null;
     let areModelAnswersVisible = true;
     let chineseTTSVoice = null;
+    // Biến mới để quản lý các bộ đếm thời gian
+    let highlightTimeouts = [];
 
     function initializeVoices() {
         const voices = speechSynthesis.getVoices();
@@ -232,12 +234,13 @@
     }
 
     // ======================================================= -->
-    // =============== LOGIC ĐỌC VÀ TÔ SÁNG ĐÃ VIẾT LẠI HOÀN TOÀN ============== -->
+    // =============== HÀM SPEAK ĐƯỢC VIẾT LẠI HOÀN TOÀN ============== -->
     // ======================================================= -->
-
     function speak(text) {
         if (isReading) {
             speechSynthesis.cancel();
+            highlightTimeouts.forEach(clearTimeout);
+            highlightTimeouts = [];
         }
 
         const textArea = document.getElementById('text-area');
@@ -250,12 +253,10 @@
             return;
         }
         
-        // B1: Chuẩn bị HTML để tô sáng bằng cách bọc mỗi từ trong thẻ span
+        // B1: Chuẩn bị HTML và lấy danh sách các từ
         const words = cleanedText.split(/\s+/).filter(Boolean);
         textArea.innerHTML = words.map((word, index) => `<span class="readable-word" id="word-${index}">${word}</span>`).join(' ');
-        
         const wordSpans = textArea.querySelectorAll('.readable-word');
-        let currentWordIndex = 0;
 
         currentUtterance = new SpeechSynthesisUtterance(cleanedText);
         currentUtterance.lang = 'zh-CN';
@@ -266,45 +267,57 @@
 
         currentUtterance.rate = currentPlaybackRate;
         
-        currentUtterance.onstart = function() {
-            isReading = true;
-        };
+        // B2: Bắt đầu phát âm thanh
+        speechSynthesis.speak(currentUtterance);
+        isReading = true;
 
-        // B2: Dùng sự kiện onboundary để tô sáng từng span tương ứng
-        currentUtterance.onboundary = function(event) {
-            if (event.name === 'word') {
-                // Xóa highlight của từ trước đó
-                if (currentWordIndex > 0) {
-                    wordSpans[currentWordIndex - 1].classList.remove('reading-highlight');
+        // B3: Bắt đầu mô phỏng việc tô sáng
+        let cumulativeDelay = 0;
+        // Tốc độ cơ bản: khoảng 300ms mỗi ký tự. Càng nhanh (rate > 1) thì thời gian càng giảm.
+        const baseSpeed = 300 / currentPlaybackRate; 
+
+        words.forEach((word, index) => {
+            const wordDuration = word.length * baseSpeed;
+            
+            // Lên lịch để tô sáng từ này
+            const timeoutId = setTimeout(() => {
+                // Xóa tô sáng của từ trước đó
+                if (index > 0) {
+                    wordSpans[index - 1].classList.remove('reading-highlight');
                 }
-                // Highlight từ hiện tại
-                if (currentWordIndex < wordSpans.length) {
-                    wordSpans[currentWordIndex].classList.add('reading-highlight');
-                    currentWordIndex++;
+                // Tô sáng từ hiện tại
+                wordSpans[index].classList.add('reading-highlight');
+
+                // Nếu là từ cuối cùng, lên lịch để xóa tô sáng sau khi đọc xong
+                if (index === words.length - 1) {
+                    const finalTimeoutId = setTimeout(() => {
+                        wordSpans[index].classList.remove('reading-highlight');
+                        isReading = false;
+                    }, wordDuration);
+                    highlightTimeouts.push(finalTimeoutId);
                 }
-            }
-        };
+            }, cumulativeDelay);
+            
+            highlightTimeouts.push(timeoutId);
+            cumulativeDelay += wordDuration;
+        });
 
         currentUtterance.onend = function() {
+            // Đảm bảo mọi thứ được dọn dẹp khi quá trình đọc kết thúc (dù là tự nhiên hay bị hủy)
+            highlightTimeouts.forEach(clearTimeout);
+            highlightTimeouts = [];
             isReading = false;
-            // Xóa highlight của từ cuối cùng
-            if (wordSpans.length > 0) {
-                 wordSpans[wordSpans.length - 1].classList.remove('reading-highlight');
+            const highlighted = textArea.querySelector('.reading-highlight');
+            if (highlighted) {
+                highlighted.classList.remove('reading-highlight');
             }
-            currentUtterance = null;
         };
-        
-        speechSynthesis.speak(currentUtterance);
     }
-    
-    // Hàm getTextContentOfTextArea không cần phức tạp nữa
+
     function getTextContentOfTextArea(element) {
         return element.innerText || element.textContent;
     }
 
-    // ======================================================= -->
-    // ======================================================= -->
-    
     function startRecognition(index) {
         currentAnswerIndex = index;
         if (recognition) {
@@ -360,9 +373,7 @@
     
     function speakQuestion(index) {
         const text = document.querySelector(`.question-block[data-index="${index}"] .question-text`).textContent;
-        // Tạm thời dùng hàm alert cho việc đọc câu hỏi để tránh xung đột với logic tô sáng
         alert("Chức năng đọc câu hỏi đang được tạm tắt để ưu tiên cho phần đọc văn bản bên phải. Vui lòng copy câu hỏi sang bên phải để nghe.");
-        // speak(text); // Tạm thời vô hiệu hóa
     }
 
     function addNewQuestion() {
@@ -672,9 +683,6 @@
         }
     });
 
-    // ======================================================= -->
-    // ============= LOGIC ĐỌC CÂU HIỆN TẠI ĐÃ SỬA LẠI ============== -->
-    // ======================================================= -->
     document.getElementById("read-current-sentence").addEventListener("click", function() {
         const textArea = document.getElementById('text-area');
         const selection = window.getSelection();
