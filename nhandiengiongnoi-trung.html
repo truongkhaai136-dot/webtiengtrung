@@ -190,15 +190,8 @@
     let isReading = false;
     let currentUtterance = null;
     let areModelAnswersVisible = true;
-
-    // ======================================================= -->
-    // =============== BIẾN MỚI ĐỂ LƯU GIỌNG ĐỌC ============== -->
-    // ======================================================= -->
     let chineseTTSVoice = null;
 
-    // ======================================================= -->
-    // =============== HÀM MỚI ĐỂ TÌM GIỌNG ĐỌC =============== -->
-    // ======================================================= -->
     function initializeVoices() {
         const voices = speechSynthesis.getVoices();
         const targetVoiceName = "Microsoft Xiaoxiao Online (Natural) - Chinese (Mainland)";
@@ -210,7 +203,6 @@
             console.warn(`Voice "${targetVoiceName}" not found. The browser's default Chinese voice will be used.`);
         }
     }
-
 
     if (!('webkitSpeechRecognition' in window)) {
         alert('Speech recognition not supported in this browser.');
@@ -239,48 +231,79 @@
         };
     }
 
-    function speak(text, textOffset = 0) {
+    // ======================================================= -->
+    // =============== LOGIC ĐỌC VÀ TÔ SÁNG ĐÃ VIẾT LẠI HOÀN TOÀN ============== -->
+    // ======================================================= -->
+
+    function speak(text) {
         if (isReading) {
             speechSynthesis.cancel();
         }
-        removeHighlight();
+
+        const textArea = document.getElementById('text-area');
         const cleanedText = text.replace(/[\u2500-\u25FF\u2B00-\u2BFF]/g, '')
-                                .replace(/Kiểm tra/g, '')
-                                .replace(/Gõ lại câu này/g, '')
-                                .replace(/Xóa\/Làm lại/g, '')
                                 .replace(/\s+/g, ' ')
                                 .trim();
+        
         if (!cleanedText) {
             isReading = false;
             return;
         }
+        
+        // B1: Chuẩn bị HTML để tô sáng bằng cách bọc mỗi từ trong thẻ span
+        const words = cleanedText.split(/\s+/).filter(Boolean);
+        textArea.innerHTML = words.map((word, index) => `<span class="readable-word" id="word-${index}">${word}</span>`).join(' ');
+        
+        const wordSpans = textArea.querySelectorAll('.readable-word');
+        let currentWordIndex = 0;
+
         currentUtterance = new SpeechSynthesisUtterance(cleanedText);
         currentUtterance.lang = 'zh-CN';
         
-        // ======================================================= -->
-        // ============= SỬ DỤNG GIỌNG ĐỌC ĐÃ CHỌN =============== -->
-        // ======================================================= -->
         if (chineseTTSVoice) {
             currentUtterance.voice = chineseTTSVoice;
         }
 
         currentUtterance.rate = currentPlaybackRate;
-        currentUtterance.onboundary = function(event) {
-            if (event.name === 'word') {
-                const word = currentUtterance.text.substring(event.charIndex, event.charIndex + event.charLength);
-                applyHighlight(word, textOffset + event.charIndex);
-            }
-        };
+        
         currentUtterance.onstart = function() {
             isReading = true;
         };
+
+        // B2: Dùng sự kiện onboundary để tô sáng từng span tương ứng
+        currentUtterance.onboundary = function(event) {
+            if (event.name === 'word') {
+                // Xóa highlight của từ trước đó
+                if (currentWordIndex > 0) {
+                    wordSpans[currentWordIndex - 1].classList.remove('reading-highlight');
+                }
+                // Highlight từ hiện tại
+                if (currentWordIndex < wordSpans.length) {
+                    wordSpans[currentWordIndex].classList.add('reading-highlight');
+                    currentWordIndex++;
+                }
+            }
+        };
+
         currentUtterance.onend = function() {
             isReading = false;
-            removeHighlight();
+            // Xóa highlight của từ cuối cùng
+            if (wordSpans.length > 0) {
+                 wordSpans[wordSpans.length - 1].classList.remove('reading-highlight');
+            }
             currentUtterance = null;
         };
+        
         speechSynthesis.speak(currentUtterance);
     }
+    
+    // Hàm getTextContentOfTextArea không cần phức tạp nữa
+    function getTextContentOfTextArea(element) {
+        return element.innerText || element.textContent;
+    }
+
+    // ======================================================= -->
+    // ======================================================= -->
     
     function startRecognition(index) {
         currentAnswerIndex = index;
@@ -337,7 +360,9 @@
     
     function speakQuestion(index) {
         const text = document.querySelector(`.question-block[data-index="${index}"] .question-text`).textContent;
-        speak(text);
+        // Tạm thời dùng hàm alert cho việc đọc câu hỏi để tránh xung đột với logic tô sáng
+        alert("Chức năng đọc câu hỏi đang được tạm tắt để ưu tiên cho phần đọc văn bản bên phải. Vui lòng copy câu hỏi sang bên phải để nghe.");
+        // speak(text); // Tạm thời vô hiệu hóa
     }
 
     function addNewQuestion() {
@@ -596,7 +621,7 @@
         const modelAnswer = document.querySelector(`.question-block[data-index="${index}"] .model-answer`).value.trim();
         const userAnswerDiv = document.getElementById(`answer-${index}`);
         const typedAnswer = document.querySelector(`.question-block[data-index="${index}"] textarea:not(.model-answer)`).value.trim();
-        let userAnswer = typedAnswer || userAnswerDiv.textContent.trim();
+        let userAnswer;
         
         if (typedAnswer) { 
             userAnswer = typedAnswer;
@@ -627,103 +652,19 @@
         userAnswerDiv.innerHTML = highlightedHtml || '';
     }
 
-    const textNodeFilter = {
-        acceptNode: function(node) {
-            if (!node.nodeValue || node.nodeValue.trim() === '') {
-                return NodeFilter.FILTER_REJECT;
-            }
-            return NodeFilter.FILTER_ACCEPT;
-        }
-    };
-
-    function getTextContentOfTextArea(textAreaElement) {
-        let textContent = '';
-        const walker = document.createTreeWalker(textAreaElement, NodeFilter.SHOW_TEXT, textNodeFilter, false);
-        let node;
-        while (node = walker.nextNode()) {
-            textContent += node.nodeValue;
-        }
-        return textContent;
-    }
-
-    function removeHighlight() {
-        const textArea = document.getElementById('text-area');
-        const highlightedSpans = textArea.querySelectorAll('.reading-highlight');
-        
-        highlightedSpans.forEach(span => {
-            span.parentNode.replaceChild(document.createTextNode(span.textContent), span);
-        });
-
-        textArea.normalize();
-    }
-
-
-    function applyHighlight(wordText, charIndexInCleanedText) {
-        removeHighlight();
-
-        const textArea = document.getElementById('text-area');
-        let fullCleanedText = getTextContentOfTextArea(textArea);
-        fullCleanedText = fullCleanedText.replace(/\s+/g, ' ').trim();
-
-
-        const startIndex = charIndexInCleanedText;
-        const endIndex = charIndexInCleanedText + wordText.length;
-
-        const range = document.createRange();
-        let currentOffset = 0;
-        let startNode = null;
-        let endNode = null;
-        let startNodeOffset = 0;
-        let endNodeOffset = 0;
-
-        const walker = document.createTreeWalker(textArea, NodeFilter.SHOW_TEXT, textNodeFilter, false);
-        let node;
-        while ((node = walker.nextNode())) {
-            const nodeValue = node.nodeValue;
-            if (currentOffset <= startIndex && (currentOffset + nodeValue.length) > startIndex && startNode === null) {
-                startNode = node;
-                startNodeOffset = startIndex - currentOffset;
-            }
-            if (currentOffset <= endIndex && (currentOffset + nodeValue.length) >= endIndex) {
-                endNode = node;
-                endNodeOffset = endIndex - currentOffset;
-                break;
-            }
-            currentOffset += nodeValue.length;
-        }
-
-        if (startNode && endNode) {
-            try {
-                range.setStart(startNode, startNodeOffset);
-                range.setEnd(endNode, endNodeOffset);
-                const span = document.createElement('span');
-                span.className = 'reading-highlight';
-                range.surroundContents(span);
-            } catch (e) {
-                console.error("Error surrounding contents for highlight:", e);
-                removeHighlight();
-            }
-        }
-    }
-
     document.getElementById("text-area").addEventListener("mouseup", function () {
         setTimeout(() => {
             const selection = window.getSelection();
-            if (selection.isCollapsed) {
+            if (selection.isCollapsed || !selection.toString().trim()) {
                 return;
             }
-
-            let selectedText = selection.toString().trim();
-            if (selectedText) {
-                selectedText = selectedText.replace(/Kiểm tra/g, '').replace(/Gõ lại câu này/g, '').replace(/Xóa\/Làm lại/g, '').trim();
-                speak(selectedText);
-            }
+            speak(selection.toString());
         }, 100);
     });
 
     document.getElementById("read-all").addEventListener("click", function () {
         const textArea = document.getElementById("text-area");
-        let fullTextToSpeak = getTextContentOfTextArea(textArea);
+        const fullTextToSpeak = getTextContentOfTextArea(textArea);
         if (fullTextToSpeak && fullTextToSpeak.trim() !== 'Paste text here...') {
             speak(fullTextToSpeak);
         } else {
@@ -731,6 +672,9 @@
         }
     });
 
+    // ======================================================= -->
+    // ============= LOGIC ĐỌC CÂU HIỆN TẠI ĐÃ SỬA LẠI ============== -->
+    // ======================================================= -->
     document.getElementById("read-current-sentence").addEventListener("click", function() {
         const textArea = document.getElementById('text-area');
         const selection = window.getSelection();
@@ -740,44 +684,35 @@
             return;
         }
 
+        const fullText = getTextContentOfTextArea(textArea);
         const range = selection.getRangeAt(0);
-
-        const preCursorRange = document.createRange();
+        const preCursorRange = range.cloneRange();
         preCursorRange.selectNodeContents(textArea);
         preCursorRange.setEnd(range.startContainer, range.startOffset);
+        const cursorPosition = preCursorRange.toString().length;
 
-        const tempDiv = document.createElement('div');
-        tempDiv.appendChild(preCursorRange.cloneContents());
-
-        const offsetInFilteredText = getTextContentOfTextArea(tempDiv).length;
-        const fullTextNodes = getTextContentOfTextArea(textArea);
-
-        let sentenceStart = offsetInFilteredText;
+        let sentenceStart = cursorPosition;
         while (sentenceStart > 0) {
-            const char = fullTextNodes[sentenceStart - 1];
-            if (char === '.' || char === '?' || char === '!' || char === '\n') {
+            const char = fullText[sentenceStart - 1];
+            if ('.?!。？！\n'.includes(char)) {
                 break;
             }
             sentenceStart--;
         }
-        while (sentenceStart < fullTextNodes.length && (fullTextNodes[sentenceStart] === ' ' || fullTextNodes[sentenceStart] === '\n' || fullTextNodes[sentenceStart].match(/[.,?!]/))) {
-            sentenceStart++;
-        }
 
-        let sentenceEnd = offsetInFilteredText;
-        while (sentenceEnd < fullTextNodes.length) {
-            const char = fullTextNodes[sentenceEnd];
-            if (char === '.' || char === '?' || char === '!' || char === '\n') {
-                sentenceEnd++;
+        let sentenceEnd = cursorPosition;
+        while (sentenceEnd < fullText.length) {
+            const char = fullText[sentenceEnd];
+            if ('.?!。？！\n'.includes(char)) {
                 break;
             }
             sentenceEnd++;
         }
 
-        let sentenceToRead = fullTextNodes.substring(sentenceStart, sentenceEnd).trim();
+        let sentenceToRead = fullText.substring(sentenceStart, sentenceEnd + 1).trim();
 
         if (sentenceToRead) {
-            speak(sentenceToRead, sentenceStart);
+            speak(sentenceToRead);
         } else {
             alert("Không tìm thấy câu để đọc tại vị trí con trỏ.");
         }
@@ -805,14 +740,11 @@
         speedValue.textContent = `${currentPlaybackRate.toFixed(1)}x`;
     });
 
-    // ======================================================= -->
-    // ============= CẬP NHẬT HÀM ONLOAD ĐỂ GỌI HÀM MỚI ============== -->
-    // ======================================================= -->
     window.onload = () => {
         if (speechSynthesis.onvoiceschanged !== undefined) {
             speechSynthesis.onvoiceschanged = initializeVoices;
         }
-        initializeVoices(); // Gọi hàm một lần khi tải trang
+        initializeVoices();
         
         document.getElementById("questions-container").innerHTML = '';
         questionCount = 0;
