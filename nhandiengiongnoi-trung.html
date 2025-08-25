@@ -2,10 +2,9 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8"/>
-    <title>Combined Chinese Q&A Recorder & Text Reader</title>
-    <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@3.5/dist/hanzi-writer.min.js"></script>
+    <title>Combined Q&A Recorder & Text Reader (Chinese)</title>
     <style>
-        /* --- General Layout --- */
+        /* CSS styles remain the same */
         html, body {
             height: 100%;
             margin: 0;
@@ -50,7 +49,6 @@
         button:hover {
             background-color: #d8dde2;
         }
-        /* --- Styles from Q&A Recorder (Left Panel) --- */
         .question-block {
             background: #fff;
             padding: 20px;
@@ -107,7 +105,6 @@
             color: #0056b3;
             margin-left: 10px;
         }
-        /* --- Styles from Text Reader (Right Panel) --- */
         #text-area {
             width: 100%;
             border: 1px solid #ccc;
@@ -136,79 +133,8 @@
             font-weight: bold;
             color: #333;
         }
-        /* CSS cho highlight */
         .reading-highlight {
-            background-color: rgb(173, 216, 230); /* Màu xanh nhạt */
-        }
-
-        /* --- CSS CHO TÍNH NĂNG STROKE ORDER --- */
-        #stroke-order-modal {
-            display: none; /* Ẩn theo mặc định */
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.6);
-            justify-content: center;
-            align-items: center;
-        }
-        #stroke-order-content {
-            background-color: #fff;
-            padding: 20px 40px 40px 40px;
-            border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-            text-align: center;
-            max-width: 90%;
-            max-height: 90vh;
-            overflow-y: auto;
-        }
-        #stroke-order-container {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            align-items: flex-start; /* Căn lề trên để các khối thẳng hàng */
-            gap: 25px; /* Khoảng cách giữa các ô */
-            margin-bottom: 20px;
-        }
-        
-        /* CSS MỚI CHO KHỐI LUYỆN VIẾT */
-        .char-practice-block {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .char-writer-box {
-            width: 150px;
-            height: 150px;
-            cursor: crosshair;
-            border: 1px solid #eee;
-            margin-bottom: 10px; /* Tạo khoảng cách với thông tin bộ thủ */
-        }
-        .radical-info {
-            font-size: 13px;
-            color: #333;
-            background-color: #f0f0f0;
-            padding: 8px;
-            border-radius: 5px;
-            width: 150px; /* Đồng bộ chiều rộng với ô viết */
-            box-sizing: border-box;
-            text-align: left;
-            line-height: 1.5;
-        }
-        
-        #stroke-order-buttons button {
-            margin: 0 10px;
-            padding: 10px 20px;
-        }
-        #stroke-order-close-btn {
-            background-color: #6c757d;
-            color: white;
-            border: none;
-        }
-        #stroke-order-close-btn:hover {
-            background-color: #5a6268;
+            background-color: rgb(173, 216, 230);
         }
     </style>
 </head>
@@ -216,7 +142,7 @@
 
 <div id="main-container">
     <div id="left-panel" class="panel">
-        <h1>Questions and Answers – Voice Recording (Chinese)</h1>
+        <h1>Questions and Answers – Voice Recording</h1>
         <h2>📂 Import questions from file:</h2>
         <input accept=".docx,.txt" id="file-input" type="file"/>
         <h2>📥 Import Q&A from ZIP:</h2>
@@ -225,11 +151,12 @@
             </div>
         <button onclick="addNewQuestion()">➕ Add New Question</button>
         <button onclick="exportData()">📤 Export Data to ZIP</button>
+        <button id="toggle-model-answers-btn" onclick="toggleModelAnswers()">Ẩn câu trả lời mẫu</button>
         <button onclick="createNewSession()">➕ Create New Session</button>
     </div>
 
     <div id="right-panel" class="panel">
-        <h1>Paste Chinese text here to listen with Xiaoxiao's voice</h1>
+        <h1>Paste text here to listen</h1>
         <div id="text-area" contenteditable="true">
             Paste text here...
         </div>
@@ -246,56 +173,45 @@
         </div>
     </div>
 </div>
-
-<div id="stroke-order-modal">
-    <div id="stroke-order-content">
-        <h3 id="stroke-order-title">Luyện viết chữ Hán</h3>
-        <div id="stroke-order-container"></div>
-        <div id="stroke-order-buttons">
-             <button id="stroke-order-animate-all-btn">Xem lại tất cả</button>
-             <button id="stroke-order-close-btn">Đóng</button>
-        </div>
-    </div>
-</div>
-
 <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jieba-js/dist/jieba.min.js"></script>
 
-<script src="radical_data.js"></script>
 
 <script>
-    // =================================================================
-    // =========== SHARED & GLOBAL VARIABLES AND FUNCTIONS ===========
-    // =================================================================
-    let chineseTTSVoice = null;
     let recognition;
     let mediaRecorder;
     let audioChunks = [];
     const audioBlobs = {};
-
     let currentAnswerIndex = null;
     let currentAudioIndex = null;
     let questionCount = 0;
-
     let currentPlaybackRate = 1.0;
     let isReading = false;
     let currentUtterance = null;
-    const highlightColors = ["#ffff99", "#99ccff", "#ffcc99", "#ffcccb", "#ffb6c1", "#98fb98", "#dda0dd", "#c19a6b"];
-    let currentColorIndex = 0;
+    let areModelAnswersVisible = true;
 
+    // ======================================================= -->
+    // =============== BIẾN MỚI ĐỂ LƯU GIỌNG ĐỌC ============== -->
+    // ======================================================= -->
+    let chineseTTSVoice = null;
+
+    // ======================================================= -->
+    // =============== HÀM MỚI ĐỂ TÌM GIỌNG ĐỌC =============== -->
+    // ======================================================= -->
     function initializeVoices() {
         const voices = speechSynthesis.getVoices();
-        chineseTTSVoice = voices.find(v => v.name === "Microsoft Xiaoxiao Online (Natural) - Chinese (Mainland)") || voices.find(v => v.name.includes("Xiaoxiao") && v.lang === "zh-CN");
+        const targetVoiceName = "Microsoft Xiaoxiao Online (Natural) - Chinese (Mainland)";
+        chineseTTSVoice = voices.find(v => v.name === targetVoiceName);
+
         if (chineseTTSVoice) {
             console.log("Successfully found Chinese voice:", chineseTTSVoice.name);
         } else {
-            console.warn("Xiaoxiao voice not found. The browser's default Chinese voice will be used.");
+            console.warn(`Voice "${targetVoiceName}" not found. The browser's default Chinese voice will be used.`);
         }
     }
 
-    // =================================================================
-    // ================ Q&A RECORDER (LEFT PANEL) LOGIC ================
-    // =================================================================
+
     if (!('webkitSpeechRecognition' in window)) {
         alert('Speech recognition not supported in this browser.');
     } else {
@@ -303,26 +219,76 @@
         recognition.continuous = true;
         recognition.interimResults = false;
         recognition.lang = 'zh-CN';
+        
         recognition.onresult = function (event) {
             let transcript = '';
             for (let i = event.resultIndex; i < event.results.length; ++i) {
                 if (event.results[i].isFinal) {
-                    transcript += event.results[i][0].transcript;
+                    transcript += event.results[i][0].transcript.replace(/[.,。]/g, '');
                 }
             }
             if (currentAnswerIndex !== null && transcript) {
+                const segmentedTranscript = jieba_cut(transcript).join(' '); 
                 const answerBox = document.getElementById(`answer-${currentAnswerIndex}`);
-                answerBox.innerHTML = answerBox.textContent + (answerBox.textContent.trim() ? '. ' : '') + transcript;
+                answerBox.innerHTML = (answerBox.textContent.trim() ? answerBox.textContent.trim() + ' ' : '') + segmentedTranscript;
             }
         };
+
         recognition.onerror = function (event) {
             console.error('Speech recognition error:', event.error);
         };
     }
 
+    function speak(text, textOffset = 0) {
+        if (isReading) {
+            speechSynthesis.cancel();
+        }
+        removeHighlight();
+        const cleanedText = text.replace(/[\u2500-\u25FF\u2B00-\u2BFF]/g, '')
+                                .replace(/Kiểm tra/g, '')
+                                .replace(/Gõ lại câu này/g, '')
+                                .replace(/Xóa\/Làm lại/g, '')
+                                .replace(/\s+/g, ' ')
+                                .trim();
+        if (!cleanedText) {
+            isReading = false;
+            return;
+        }
+        currentUtterance = new SpeechSynthesisUtterance(cleanedText);
+        currentUtterance.lang = 'zh-CN';
+        
+        // ======================================================= -->
+        // ============= SỬ DỤNG GIỌNG ĐỌC ĐÃ CHỌN =============== -->
+        // ======================================================= -->
+        if (chineseTTSVoice) {
+            currentUtterance.voice = chineseTTSVoice;
+        }
+
+        currentUtterance.rate = currentPlaybackRate;
+        currentUtterance.onboundary = function(event) {
+            if (event.name === 'word') {
+                const word = currentUtterance.text.substring(event.charIndex, event.charIndex + event.charLength);
+                applyHighlight(word, textOffset + event.charIndex);
+            }
+        };
+        currentUtterance.onstart = function() {
+            isReading = true;
+        };
+        currentUtterance.onend = function() {
+            isReading = false;
+            removeHighlight();
+            currentUtterance = null;
+        };
+        speechSynthesis.speak(currentUtterance);
+    }
+    
     function startRecognition(index) {
         currentAnswerIndex = index;
-        if (recognition) recognition.start();
+        if (recognition) {
+            const answerBox = document.getElementById(`answer-${currentAnswerIndex}`);
+            answerBox.innerHTML = '';
+            recognition.start();
+        }
         startAudioRecording(index);
     }
 
@@ -330,7 +296,7 @@
         if (recognition) recognition.stop();
         stopAudioRecording();
     }
-
+    
     async function startAudioRecording(index) {
         currentAudioIndex = index;
         try {
@@ -368,43 +334,7 @@
             alert("No audio recorded for this question yet.");
         }
     }
-
-    function speak(text, textOffset = 0) {
-        if (isReading) {
-            speechSynthesis.cancel();
-        }
-        removeHighlight();
-        const cleanedText = text.replace(/[\u2500-\u25FF\u2B00-\u2BFF]/g, '')
-                                .replace(/Kiểm tra/g, '')
-                                .replace(/Gõ lại câu này/g, '')
-                                .replace(/Xóa\/Làm lại/g, '')
-                                .replace(/\s+/g, ' ')
-                                .trim();
-        if (!cleanedText) {
-            isReading = false;
-            return;
-        }
-        currentUtterance = new SpeechSynthesisUtterance(cleanedText);
-        currentUtterance.lang = 'zh-CN';
-        if (chineseTTSVoice) currentUtterance.voice = chineseTTSVoice;
-        currentUtterance.rate = currentPlaybackRate;
-        currentUtterance.onboundary = function(event) {
-            if (event.name === 'word') {
-                const word = currentUtterance.text.substring(event.charIndex, event.charIndex + event.charLength);
-                applyHighlight(word, textOffset + event.charIndex);
-            }
-        };
-        currentUtterance.onstart = function() {
-            isReading = true;
-        };
-        currentUtterance.onend = function() {
-            isReading = false;
-            removeHighlight();
-            currentUtterance = null;
-        };
-        speechSynthesis.speak(currentUtterance);
-    }
-
+    
     function speakQuestion(index) {
         const text = document.querySelector(`.question-block[data-index="${index}"] .question-text`).textContent;
         speak(text);
@@ -442,29 +372,63 @@
     function createNewSession() {
         window.open(window.location.pathname + `?id=${Date.now()}_${Math.floor(Math.random() * 100000)}`, '_blank');
     }
+    
+    function toggleModelAnswers() {
+        const modelAnswers = document.querySelectorAll('.model-answer');
+        const button = document.getElementById('toggle-model-answers-btn');
+        areModelAnswersVisible = !areModelAnswersVisible;
+        
+        modelAnswers.forEach(answer => {
+            answer.style.display = areModelAnswersVisible ? 'block' : 'none';
+        });
+
+        button.textContent = areModelAnswersVisible ? 'Ẩn câu trả lời mẫu' : 'Hiện câu trả lời mẫu';
+    }
+    
+    function processImportedQuestionsAndAnswers(text) {
+        document.getElementById("questions-container").innerHTML = '';
+        questionCount = 0;
+        
+        const lines = text.split(/\r?\n/);
+        const qaPairs = [];
+        
+        lines.forEach(line => {
+            const trimmedLine = line.trim();
+            if (!trimmedLine) return;
+
+            if (trimmedLine.startsWith('[A]')) {
+                if (qaPairs.length > 0) {
+                    qaPairs[qaPairs.length - 1].answer = trimmedLine.substring(3).trim();
+                }
+            } else {
+                qaPairs.push({ question: trimmedLine, answer: '' });
+            }
+        });
+        
+        qaPairs.forEach(pair => {
+            if (!pair.question) return;
+            addNewQuestion();
+            const newBlock = document.querySelector(`.question-block[data-index="${questionCount - 1}"]`);
+            newBlock.querySelector(".question-text").textContent = pair.question;
+            if (pair.answer) {
+                 newBlock.querySelector(".model-answer").value = pair.answer;
+            }
+        });
+    }
 
     document.getElementById("file-input").addEventListener("change", function (event) {
         const file = event.target.files[0];
         if (!file) return;
-        const processQuestions = (questions) => {
-            document.getElementById("questions-container").innerHTML = '';
-            questionCount = 0;
-            questions.forEach(qText => {
-                if (!qText.trim()) return;
-                addNewQuestion();
-                const newBlock = document.querySelector(`.question-block[data-index="${questionCount-1}"]`);
-                newBlock.querySelector(".question-text").textContent = qText.trim();
-            });
-        };
+
         if (file.name.endsWith(".txt")) {
             const reader = new FileReader();
-            reader.onload = () => processQuestions(reader.result.split(/\r?\n/).filter(Boolean));
+            reader.onload = () => processImportedQuestionsAndAnswers(reader.result);
             reader.readAsText(file);
         } else if (file.name.endsWith(".docx")) {
             const reader = new FileReader();
             reader.onload = (e) => {
                 mammoth.extractRawText({ arrayBuffer: e.target.result })
-                    .then(result => processQuestions(result.value.split("\n").filter(Boolean)));
+                    .then(result => processImportedQuestionsAndAnswers(result.value));
             };
             reader.readAsArrayBuffer(file);
         }
@@ -563,10 +527,6 @@
         });
     });
 
-    // =================================================================
-    // ================= SCORING LOGIC (IMPROVED) ======================
-    // =================================================================
-
     function levenshteinDistance(s1, s2) {
         const cleanS1 = s1.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '');
         const cleanS2 = s2.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '');
@@ -637,7 +597,13 @@
         const userAnswerDiv = document.getElementById(`answer-${index}`);
         const typedAnswer = document.querySelector(`.question-block[data-index="${index}"] textarea:not(.model-answer)`).value.trim();
         let userAnswer = typedAnswer || userAnswerDiv.textContent.trim();
-        if (typedAnswer) { userAnswerDiv.textContent = typedAnswer; }
+        
+        if (typedAnswer) { 
+            userAnswer = typedAnswer;
+        } else {
+            userAnswer = userAnswerDiv.textContent.trim();
+        }
+
         const scoreDisplay = document.getElementById(`score-display-${index}`);
         if (!modelAnswer) { alert("Vui lòng nhập câu trả lời mẫu để chấm điểm."); return; }
         if (!userAnswer) { alert("Vui lòng ghi âm hoặc nhập câu trả lời trước khi chấm điểm."); return; }
@@ -657,22 +623,12 @@
             const escapedText = part.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             return `<span style="color: ${color};">${escapedText}</span>`;
         }).join(' ');
+        
         userAnswerDiv.innerHTML = highlightedHtml || '';
     }
 
-    // =================================================================
-    // ================= TEXT READER (RIGHT PANEL) LOGIC =================
-    // =================================================================
-
     const textNodeFilter = {
         acceptNode: function(node) {
-            if (node.parentNode && (node.parentNode.classList.contains('script-checker-input') ||
-                                   node.parentNode.classList.contains('script-checker-button') ||
-                                   node.parentNode.classList.contains('script-checker-controls') ||
-                                   node.parentNode.classList.contains('masked-text-display') ||
-                                   node.parentNode.classList.contains('script-checker-clear-button'))) {
-                return NodeFilter.FILTER_REJECT;
-            }
             if (!node.nodeValue || node.nodeValue.trim() === '') {
                 return NodeFilter.FILTER_REJECT;
             }
@@ -693,25 +649,33 @@
     function removeHighlight() {
         const textArea = document.getElementById('text-area');
         const highlightedSpans = textArea.querySelectorAll('.reading-highlight');
+        
         highlightedSpans.forEach(span => {
             span.parentNode.replaceChild(document.createTextNode(span.textContent), span);
         });
+
         textArea.normalize();
     }
 
 
     function applyHighlight(wordText, charIndexInCleanedText) {
         removeHighlight();
+
         const textArea = document.getElementById('text-area');
-        const fullCleanedText = getTextContentOfTextArea(textArea);
+        let fullCleanedText = getTextContentOfTextArea(textArea);
+        fullCleanedText = fullCleanedText.replace(/\s+/g, ' ').trim();
+
+
         const startIndex = charIndexInCleanedText;
         const endIndex = charIndexInCleanedText + wordText.length;
+
         const range = document.createRange();
         let currentOffset = 0;
         let startNode = null;
         let endNode = null;
         let startNodeOffset = 0;
         let endNodeOffset = 0;
+
         const walker = document.createTreeWalker(textArea, NodeFilter.SHOW_TEXT, textNodeFilter, false);
         let node;
         while ((node = walker.nextNode())) {
@@ -727,6 +691,7 @@
             }
             currentOffset += nodeValue.length;
         }
+
         if (startNode && endNode) {
             try {
                 range.setStart(startNode, startNodeOffset);
@@ -747,6 +712,7 @@
             if (selection.isCollapsed) {
                 return;
             }
+
             let selectedText = selection.toString().trim();
             if (selectedText) {
                 selectedText = selectedText.replace(/Kiểm tra/g, '').replace(/Gõ lại câu này/g, '').replace(/Xóa\/Làm lại/g, '').trim();
@@ -768,18 +734,24 @@
     document.getElementById("read-current-sentence").addEventListener("click", function() {
         const textArea = document.getElementById('text-area');
         const selection = window.getSelection();
+
         if (selection.rangeCount === 0) {
             alert("Vui lòng đặt con trỏ chuột vào vị trí muốn đọc hoặc chọn một đoạn văn bản.");
             return;
         }
+
         const range = selection.getRangeAt(0);
+
         const preCursorRange = document.createRange();
         preCursorRange.selectNodeContents(textArea);
         preCursorRange.setEnd(range.startContainer, range.startOffset);
+
         const tempDiv = document.createElement('div');
         tempDiv.appendChild(preCursorRange.cloneContents());
+
         const offsetInFilteredText = getTextContentOfTextArea(tempDiv).length;
         const fullTextNodes = getTextContentOfTextArea(textArea);
+
         let sentenceStart = offsetInFilteredText;
         while (sentenceStart > 0) {
             const char = fullTextNodes[sentenceStart - 1];
@@ -791,6 +763,7 @@
         while (sentenceStart < fullTextNodes.length && (fullTextNodes[sentenceStart] === ' ' || fullTextNodes[sentenceStart] === '\n' || fullTextNodes[sentenceStart].match(/[.,?!]/))) {
             sentenceStart++;
         }
+
         let sentenceEnd = offsetInFilteredText;
         while (sentenceEnd < fullTextNodes.length) {
             const char = fullTextNodes[sentenceEnd];
@@ -800,7 +773,9 @@
             }
             sentenceEnd++;
         }
+
         let sentenceToRead = fullTextNodes.substring(sentenceStart, sentenceEnd).trim();
+
         if (sentenceToRead) {
             speak(sentenceToRead, sentenceStart);
         } else {
@@ -830,104 +805,15 @@
         speedValue.textContent = `${currentPlaybackRate.toFixed(1)}x`;
     });
 
-    // =================================================================
-    // =========== LOGIC MỚI CHO TÍNH NĂNG STROKE ORDER QUIZ ============
-    // =================================================================
-    
-    const strokeOrderModal = document.getElementById('stroke-order-modal');
-    const strokeOrderContainer = document.getElementById('stroke-order-container');
-    const strokeOrderCloseBtn = document.getElementById('stroke-order-close-btn');
-    const strokeOrderAnimateAllBtn = document.getElementById('stroke-order-animate-all-btn');
-    let hanziWriters = [];
-
-    // THAY ĐỔI: Cập nhật hàm startMultiPractice để hiển thị bộ thủ
-    function startMultiPractice(text) {
-        const characters = text.split('').filter(char => /[\u4e00-\u9fa5]/.test(char));
-        if (characters.length === 0) {
-            return;
-        }
-        strokeOrderContainer.innerHTML = '';
-        hanziWriters = [];
-        strokeOrderModal.style.display = 'flex';
-
-        characters.forEach((character, index) => {
-            // Tạo một khối chứa cho cả ô viết và thông tin bộ thủ
-            const charBlock = document.createElement('div');
-            charBlock.className = 'char-practice-block';
-
-            // Tạo div riêng cho ô viết HanziWriter
-            const writerDiv = document.createElement('div');
-            writerDiv.id = `char-target-${index}`;
-            writerDiv.className = 'char-writer-box';
-            charBlock.appendChild(writerDiv);
-
-            // Kiểm tra và hiển thị thông tin bộ thủ từ localRadicalData
-            // Đảm bảo rằng file radical_data.js đã được tải
-            if (typeof localRadicalData !== 'undefined' && localRadicalData[character]) {
-                const radicals = localRadicalData[character];
-                const infoDiv = document.createElement('div');
-                infoDiv.className = 'radical-info';
-                infoDiv.innerHTML = radicals.map(rad => `<b>${rad.r}</b> (${rad.n}): ${rad.m}`).join('<br>');
-                charBlock.appendChild(infoDiv);
-            }
-            
-            strokeOrderContainer.appendChild(charBlock);
-
-            // Tạo HanziWriter cho chữ này
-            const writer = HanziWriter.create(writerDiv.id, character, {
-                width: 150,
-                height: 150,
-                padding: 5,
-                showOutline: true,
-                showCharacter: false,
-                strokeAnimationSpeed: 1,
-                delayBetweenStrokes: 200,
-                quizMistakeAnimationSpeed: 0.8,
-            });
-            hanziWriters.push(writer);
-        });
-        hanziWriters.forEach(writer => writer.quiz());
-    }
-
-    function hidePractice() {
-        strokeOrderModal.style.display = 'none';
-        strokeOrderContainer.innerHTML = '';
-        hanziWriters = [];
-    }
-    
-    strokeOrderCloseBtn.addEventListener('click', hidePractice);
-    strokeOrderAnimateAllBtn.addEventListener('click', () => {
-        hanziWriters.forEach(writer => writer.animateCharacter());
-    });
-
-    // THAY ĐỔI: Cập nhật sự kiện nhấn phím
-    document.addEventListener('keydown', function(event) {
-        // Kích hoạt bằng Alt + P
-        if (event.altKey && (event.key === 'P' || event.key === 'p')) {
-            if (strokeOrderModal.style.display !== 'flex') {
-                const selection = window.getSelection();
-                const selectedText = selection.toString().trim();
-                if (selectedText) {
-                    event.preventDefault(); // Ngăn hành động mặc định của trình duyệt với Alt+P
-                    startMultiPractice(selectedText);
-                }
-            }
-        }
-        
-        // Đóng popup bằng phím Esc
-        if (event.key === 'Escape' && strokeOrderModal.style.display === 'flex') {
-            hidePractice();
-        }
-    });
-
-    // =================================================================
-    // =================== INITIALIZATION ==============================
-    // =================================================================
+    // ======================================================= -->
+    // ============= CẬP NHẬT HÀM ONLOAD ĐỂ GỌI HÀM MỚI ============== -->
+    // ======================================================= -->
     window.onload = () => {
         if (speechSynthesis.onvoiceschanged !== undefined) {
             speechSynthesis.onvoiceschanged = initializeVoices;
         }
-        initializeVoices();
+        initializeVoices(); // Gọi hàm một lần khi tải trang
+        
         document.getElementById("questions-container").innerHTML = '';
         questionCount = 0;
         addNewQuestion();
